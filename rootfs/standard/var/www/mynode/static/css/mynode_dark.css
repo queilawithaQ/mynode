@@ -1,18 +1,23 @@
-/* mynode color: #f9c132 */
+/* mynode color: #f9c132  - not used in UI*/
+/* background color:  #1B2127 */
+/* settings tiles:    #20242B */
+/* tile color:        #121C21 */ 
+
+
 /* dark grey for background: #303841 */
 /* lighter gray: #3a4750 */
-/* light gray: #eee */
+/* light gray: #ddd */
 
 body {
-    background: #303841;
+    background: #1b2127;
 }
 
 a:link,
 a:visited,
 a:hover,
 a:active {
-    color: #eee;
-    text-decoration: underline dashed #eee;
+    color: #ddd;
+    text-decoration: underline solid #eeeeee5e;
 }
 
 .footer,
@@ -21,50 +26,119 @@ a:active {
 .shutoff_warning,
 .main_header,
 .main_header_sub_text,
+.sub_header,
+.sub_header_sub_text,
+.warning_div,
+.format_div,
 .app_title,
 .app_status,
 .app_contents,
 .info_tile_contents,
 .content_block,
 .instructions,
-.drive_usage,
-.settings_block_header,
+.device_status_info,
+.bitcoin_block,
+.pair_wallet_text,
+.app_tile_lightning_details,
+.lightning_channel_container,
 .settings_block_subheader,
 .settings_block_subheader_status,
 .settings_block,
 table,
 #cli_contents,
 .small_message {
-    color: #eee;
+    color: #ddd;
 }
 
 .app_tile,
 .app_tile_short,
-.info_tile,
-.settings_block_header {
-    border: 3px solid #f9c132;
+.app_tile_wide,
+.app_tile_bitcoin_recent_blocks,
+.app_tile_lightning_details,
+.info_tile {
+    border: none;
+}
+
+.app_tile,
+.app_tile_wide,
+.app_tile_bitcoin_recent_blocks,
+.app_tile_lightning_details,
+.app_tile_short {
+  background-color: #121C21;
+}
+
+.info_tile {
+    background: #121C1F;
 }
 
 .info_tile_header {
-    color: #FFFFFF;
-    background-color: #f9c132;
+    color: #121C21;
+    background-color: orange;
 }
 
+.bitcoin_table {
+    background-color: #1b2127;
+}
+.settings_block {
+    background-color: #121C21;    
+}
+
+.bitcoin_table_header {
+    border-bottom: 2px solid gray;
+    background-color: unset;
+}
+
+table.bitcoin_table tbody tr:nth-child(odd) td{
+    background-color: #ffffff05;
+}
+table.bitcoin_table tbody tr:nth-child(even) td{
+    background-color: unset;
+}
+
+
+.settings_block_header {
+  color: orange;
+  font-weight: bold;
+}
+
+.settings_block_subheader {
+    color: orange;
+}
+
+
 .divider {
-    border-bottom: 3px dashed #f9c132;
+    border-bottom: 1px solid #ffb7001c;
+}
+
+th td {
+    border-top: #323640 1px solid;
 }
 
 .ui-button.ui-widget.ui-corner-all {
-    color: #303841;
-    background-color: #eee;
-    border-color: #eee;
+    color: #c3c3c3;
+    background-color: #2a343d;
+}
+
+.ui-button.ui-widget.ui-corner-all:hover{
+  background-color: #3a4854;
+}
+
+.install_button {
+    color: #222 !important;
+}
+.uninstall_button {
+    color: #222 !important;
+}
+
+.loading_spinner_overlay {
+    color: #ddd;
+    background-color: #303841;
 }
 
 .main_page_warning_block,
-.upgrade_ad_main_page,
 .halving_message_main_page {
-    color: #eee;
-    border: 3px solid #f9c132;
+    color: #ddd;
+    border: 3px solid orange;
     background-color: #3a4750;
 }
 
@@ -82,18 +156,19 @@ table,
 }
 
 input:checked + .slider {
-  background-color: #eee;
+  background-color: #ddd;
 }
 
 input:focus + .slider {
-  box-shadow: 0 0 1px #eee;
+  box-shadow: 0 0 1px #ddd;
 }
 
 .cli_contents {
     border: 2px solid #222222;
+    background-color: #20242b;
 }
 .config_textarea {
-	color: #eee;
+	color: #ddd;
 	background-color: #303841;
 }
 

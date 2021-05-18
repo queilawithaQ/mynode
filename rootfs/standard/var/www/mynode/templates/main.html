@@ -2,44 +2,433 @@
     <head>
         <title>{{ title }}</title>
         {% include 'includes/head.html' %}
-        <meta http-equiv="refresh" content="120">
+        <meta http-equiv="refresh" content="{{ refresh_rate }}">
 
         <script>
-            $(document).ready(function() {
-                electrs_enabled = {% if electrs_enabled %}1{% else %}0{% endif %}
-                lndhub_enabled = {% if lndhub_enabled %}1{% else %}0{% endif %}
-                vpn_enabled = {% if vpn_enabled %}1{% else %}0{% endif %}
-                mempoolspace_enabled = {% if mempoolspace_enabled %}1{% else %}0{% endif %}
+            // Data
+            var application_data = {};
+            {% for app in apps %}
+            application_data["{{app.short_name}}"] = {};
+            application_data["{{app.short_name}}"]["name"] = "{{app.name}}";
+            application_data["{{app.short_name}}"]["short_name"] = "{{app.short_name}}";
+            application_data["{{app.short_name}}"]["is_enabled"] = {% if app.is_enabled %}true{% else %}false{% endif %};
+            {% endfor %}
+            var electrs_active = {% if electrs_active %}1{% else %}0{% endif %};
+            var lnd_ready = {% if lnd_ready %}true{% else %}false{% endif %};
+            var is_installing_docker_images = {% if is_installing_docker_images %}true{% else %}false{% endif %};
+            var lnd_last_btc_tx = "";
+            var lnd_last_ln_tx = "";
 
+            // Toggle enable/disable functions
+            function get_custom_enable_message(short_name) {
+                message = "";
+                if (short_name == "electrs") {
+                    message = "Enabling Electrum Server will take several days to fully sync for \
+                               the first time. Your myNode may run slowly during this period.";
+                } else if (short_name == "vpn") {
+                    message = "Enabling VPN will set your IP to a static IP rather than a dynamic one via DHCP. \
+                               The initial setup may take about an hour.";
+                } else if (short_name == "dojo") {
+                    message = "Enabling Dojo for the first time will reboot your device and install Dojo.";
+                }
+                if (message != "") {
+                    message += "<br/><br/>";
+                }
+                return message;
+            }
+
+            function toggleEnabled(short_name) {
+                enabled = application_data[short_name]["is_enabled"];
+                full_name = application_data[short_name]["name"];
+                
+                if ( enabled ) {
+                    // Disabling
+                    openConfirmDialog("confirm-dialog", 
+                                      "Disable "+full_name, 
+                                      "Are you sure you want to disable "+full_name+"?",
+                                       function(){
+                                            $( this ).dialog( "close" );
+                                            $('#loading_spinner_overlay').fadeIn();
+                                            window.location.href="/toggle-enabled?app="+short_name
+                                       });
+                } else {
+                    custom_message = "";
+                    // Enabling
+                    openConfirmDialog("confirm-dialog", 
+                                      "Enable "+full_name, 
+                                      get_custom_enable_message(short_name) +
+                                      "Are you sure you want to enable "+full_name+"?",
+                                       function(){
+                                            $( this ).dialog( "close" );
+                                            $('#loading_spinner_overlay').fadeIn();
+                                            window.location.href="/toggle-enabled?app="+short_name
+                                       });
+                }
+            }
+
+            // Update status functions
+            function update_status(status_name, data) {
+                if (data != null && "status" in data && data["status"] != null) {
+                    $("#"+status_name).html(data["status"]);
+                }
+            }
+            function update_status_icon(status_icon_name, data) {
+                if (data != null && "color" in data && data["color"] != null) {
+                    $("#"+status_icon_name).removeClass("red");
+                    $("#"+status_icon_name).removeClass("yellow");
+                    $("#"+status_icon_name).removeClass("green");
+                    $("#"+status_icon_name).removeClass("gray");
+                    $("#"+status_icon_name).removeClass("blue");
+                    $("#"+status_icon_name).removeClass("clear");
+                    $("#"+status_icon_name).addClass(data["color"]);
+                }
+            }
+
+            function update_channel_status_icon(channel) {
+                if (channel != null && "chan_id" in channel && "status_color" in channel) {
+                    $("#channel_status_icon_"+c["chan_id"]).removeClass("red");
+                    $("#channel_status_icon_"+c["chan_id"]).removeClass("yellow");
+                    $("#channel_status_icon_"+c["chan_id"]).removeClass("green");
+                    $("#channel_status_icon_"+c["chan_id"]).removeClass("gray");
+                    $("#channel_status_icon_"+c["chan_id"]).removeClass("blue");
+                    $("#channel_status_icon_"+c["chan_id"]).removeClass("clear");
+                    $("#channel_status_icon_"+c["chan_id"]).addClass(c["status_color"]);
+                }
+            }
+
+            function update_sso_token(short_name, data) {
+                if ("sso_token" in data && data["sso_token"] != null && data["sso_token"] != "") {
+                    application_data[short_name]["sso_token"] = data["sso_token"]
+                }
+            }
+
+            function refresh_page() {
+                window.location.href=location.protocol+'//'+location.hostname+"/";
+            }
+
+            function need_to_update_tx_table(transactions, last_displayed_tx) {
+                if (transactions.length > 0) {
+                    tx = transactions[0];
+                    if (tx["id"] != last_displayed_tx) {
+                        return true;
+                    }
+                    return false;
+                } else {
+                    if (last_displayed_tx == "none") {
+                        return false;
+                    }
+                    return true;
+                }
+            }
+
+            var showing_blocks = false;
+            function toggleBlocks() {
+                if (showing_blocks) {
+                    $("#bitcoin_blocks").slideUp(400);
+                    $('#show_bitcoin_blocks').attr('src', location.protocol+'//'+location.hostname+'/static/images/expand_down.png');
+                } else {
+                    $("#bitcoin_blocks").slideDown(400);
+                    $('#show_bitcoin_blocks').attr('src', location.protocol+'//'+location.hostname+'/static/images/expand_up.png');
+                }
+                showing_blocks = !showing_blocks;
+            }
+
+            var pinned_lightning_details = {% if ui_settings['pinned_lightning_details'] %}true{% else %}false{% endif %};
+            function togglePinnedLightningDetails() {
+                if (pinned_lightning_details) {
+                    $('#pin_lightning_details_icon').attr('src', location.protocol+'//'+location.hostname+'/static/images/pin.png');
+                    $.get("/api/toggle_setting?setting=pinned_lightning_details");
+                } else {
+                    $('#pin_lightning_details_icon').attr('src', location.protocol+'//'+location.hostname+'/static/images/unpin.png');
+                    $.get("/api/toggle_setting?setting=pinned_lightning_details");
+                }
+                pinned_lightning_details = !pinned_lightning_details;
+            }
+
+            var showing_lightning_details = false;
+            function toggleLightningDetails() {
+                if (showing_lightning_details) {
+                    $("#lightning_details").slideUp(400);
+                    $('#show_lightning_details').attr('src', location.protocol+'//'+location.hostname+'/static/images/expand_down.png');
+                } else {
+                    $("#lightning_details").slideDown(400);
+                    $('#show_lightning_details').attr('src', location.protocol+'//'+location.hostname+'/static/images/expand_up.png');
+                    {% for c in lnd_channels %}
+                        // Initialize channel balance bars
+                        $( "#channel_bar_{{ c.chan_id }}" ).progressbar({
+                            value: Math.floor( {{ c.chan_percent }} )
+                        });
+                        $('#channel_bar_{{ c.chan_id }}').height(15);
+                    {% endfor %}
+                }
+                showing_lightning_details = !showing_lightning_details;
+            }
+            
+
+            // Update page function
+            function update_page() {
+                // Update Bitcoin Info
+                $.getJSON("/api/get_bitcoin_info", function( data ) {
+                    //console.log("Bitcoin Data: " + JSON.stringify(data))
+                    if ("current_block" in data && data["current_block"] != null) {
+                        $("#current_block").html(data["current_block"]);
+                    }
+                    if ("peer_count" in data && data["peer_count"] != null) {
+                        $("#bitcoin_peer_count").html(data["peer_count"]);
+                    }
+                    if ("difficulty" in data && data["difficulty"] != null) {
+                        $("#bitcoin_difficulty").html(data["difficulty"]);
+                    }
+                    if ("mempool_size" in data && data["mempool_size"] != null) {
+                        $("#bitcoin_mempool_size").html(data["mempool_size"]);
+                    }
+                    if ("recent_blocks" in data && data["recent_blocks"] != null) {
+                        blocks = data["recent_blocks"].reverse();
+                        for (i=0; i < data["recent_blocks"].length; i++) {
+                            b = data["recent_blocks"][i]
+                            //console.log(JSON.stringify(b))
+                            $("#bitcoin_block_height_"+i).html(b["height"]);
+                            size = parseFloat(b["size"]) / 1000 / 1000;
+                            $("#bitcoin_block_size_"+i).html(size.toFixed(2) + " MB");
+                            $("#bitcoin_block_num_txs_"+i).html(b["nTx"] + " txs");
+                            var now = new Date();
+                            var nowSeconds = Math.round(now.getTime() / 1000);
+                            var minutesAgo = Math.round((nowSeconds - parseInt(b["time"])) / 60);
+                            $("#bitcoin_block_time_"+i).html(minutesAgo + " min ago");
+                        }
+                    }
+                });
+
+                // Update Lightning Info
+                $.getJSON("/api/get_lightning_info", function( data ) {
+                    //console.log("Lightning Data: " + JSON.stringify(data))
+                    if ("channel_count" in data && data["channel_count"] != null) {
+                        $("#lnd_channel_count").html(data["channel_count"]);
+                    }
+                    if ("peer_count" in data && data["peer_count"] != null) {
+                        $("#lnd_peer_count").html(data["peer_count"]);
+                    }
+                    if ("balances" in data && data["balances"] != null) {
+                        balances = data["balances"]
+                        if ("wallet_balance" in balances && balances["wallet_balance"] != null) {
+                            $("#lnd_wallet_balance").html(balances["wallet_balance"]);
+                        }
+                        if ("channel_balance" in balances && balances["channel_balance"] != null) {
+                            $("#lnd_channel_balance").html(balances["channel_balance"]);
+                        }
+                        if ("total_balance" in balances && balances["total_balance"] != null) {
+                            $("#lnd_total_balance").html(balances["total_balance"] + " sats");
+                        }
+                    }
+                    if ("lnd_ready" in data && data["lnd_ready"] != null) {
+                        if (lnd_ready != data["lnd_ready"]) {
+                            refresh_page();
+                        }
+                    }
+                    if ("channels" in data && data["channels"] != null) {
+                        if (showing_lightning_details) {
+                            channels = data["channels"];
+                            for (i=0; i < channels.length; i++) {
+                                c = channels[i];
+                                //console.log(JSON.stringify(c))
+                                update_channel_status_icon(c)
+                                $("#channel_local_"+c["chan_id"]).html(c["local_balance"]+" sats");
+                                $("#channel_remote_"+c["chan_id"]).html(c["remote_balance"]+" sats");
+
+
+                                $("#channel_bar_"+c["chan_id"]).progressbar({
+                                    value: Math.floor( c["chan_percent"] )
+                                });
+                            }
+                        }
+                    }
+                    if ("transactions" in data && data["transactions"] != null) {
+                        transactions = data["transactions"];
+                        if (need_to_update_tx_table(transactions, lnd_last_btc_tx)) {
+                            // Clear table
+                            while ($('#lnd_transactions tr').length > 1) {
+                                $('#lnd_transactions tr:last').remove();
+                            }
+                            for (i=0; i < transactions.length && i < {{lnd_tx_display_limit}}; i++) {
+                                tx = transactions[i];
+                                //console.log(JSON.stringify(tx))
+                                if (i==0) {lnd_last_btc_tx = tx['id'];}
+                                row =  "<tr>";
+                                row += "<td>"+tx['date_str']+"</td>";
+                                row += "<td>"+tx['amount_str']+"</td>";
+                                row += "<td>";
+                                if      (tx["num_confirmations"] <  1) { row += "<img style=\"width: 16px;\" src=\"/static/images/confirm_pending.png\" title=\"pending transaction\"/>"; }
+                                else if (tx["num_confirmations"] <= 3) { row += "<img style=\"width: 16px;\" src=\"/static/images/confirm_bars_"+tx["num_confirmations"]+".png\" title=\""+tx["num_confirmations"]+" confirmations\"/>"; }
+                                else if (tx["num_confirmations"] >  3) { row += "<img style=\"width: 16px;\" src=\"/static/images/confirm_complete.png\" title=\""+tx["num_confirmations"]+" confirmations\"/>"; }
+                                row += "</td>";
+                                row += "</tr>";
+                                $('#lnd_transactions tr:last').after(row);
+                            }
+                            if (transactions.length >= {{lnd_tx_display_limit}}) {
+                                $('#lnd_transactions tr:last').after("<tr><td colspan=9>more...</td></tr>");
+                            }
+                            if (transactions.length == 0) {
+                                lnd_last_btc_tx = "none";
+                                $('#lnd_transactions tr:last').after("<tr><td colspan=9 style=\"text-align: center;\"><br/><br/>None yet!</td></tr>");
+                            }
+                        }
+                    }
+                    if ("payments_and_invoices" in data && data["payments_and_invoices"] != null) {
+                        payments_and_invoices = data["payments_and_invoices"];
+                        if (need_to_update_tx_table(payments_and_invoices, lnd_last_ln_tx)) {
+                            // Clear table
+                            while ($('#lnd_payments_and_invoices tr').length > 1) {
+                                $('#lnd_payments_and_invoices tr:last').remove();
+                            }
+                            for (i=0; i < payments_and_invoices.length && i < {{lnd_tx_display_limit}}; i++) {
+                                tx = payments_and_invoices[i];
+                                //console.log(JSON.stringify(tx))
+                                if (i==0) {lnd_last_ln_tx = tx['id'];}
+                                row =  "<tr>";
+                                row += "<td>"+tx['date_str']+"</td>";
+                                row += "<td>"+tx['value_str']+"</td>";
+                                row += "<td>";
+                                if (tx["type"] == "PAYMENT") {
+                                    row += "<img style=\"width: 16px;\" src=\"/static/images/ln_send.png\"/>";
+                                } else {
+                                    row += "<img style=\"width: 16px;\" src=\"/static/images/ln_recv.png\"/>";
+                                }
+                                if ("state" in tx && tx["state"] == "OPEN")      { row += "<img style=\"width: 16px;\" src=\"/static/images/invoice_pending.png\" title=\"open invoice\"/>"; }
+                                if ("state" in tx && tx["state"] == "SETTLED")   { row += "<img style=\"width: 16px;\" src=\"/static/images/invoice_complete.png\" title=\"settled invoice\"/>"; }
+                                if ("state" in tx && tx["state"] == "CANCELED")  { row += "<img style=\"width: 16px;\" src=\"/static/images/invoice_cancelled.png\" title=\"cancelled invoice\"/>"; }
+                                if ("state" in tx && tx["state"] == "CANCELLED") { row += "<img style=\"width: 16px;\" src=\"/static/images/invoice_cancelled.png\" title=\"cancelled invoice\"/>"; }
+
+                                if ("memo" in tx && tx["memo"] != "") {
+                                    row += "<img style=\"width: 16px;\" src=\"/static/images/memo.png\" title=\""+tx["memo"]+"\"/>";
+                                }
+                                row += "</td>";
+                                row += "</tr>";
+                                $('#lnd_payments_and_invoices tr:last').after(row);
+                            }
+                            if (payments_and_invoices.length >= {{lnd_tx_display_limit}}) {
+                                $('#lnd_payments_and_invoices tr:last').after("<tr><td colspan=9>more...</td></tr>");
+                            }
+                            if (payments_and_invoices.length == 0) {
+                                lnd_last_ln_tx = "none";
+                                $('#lnd_payments_and_invoices tr:last').after("<tr><td colspan=9 style=\"text-align: center;\"><br/><br/>None yet!</td></tr>");
+                            }
+                        }
+                    }
+                });
+
+                // Update app status
+                {% for app in apps %}
+                    {% if app.show_on_homepage %}
+                        $.getJSON("/api/get_service_status?service={{app.short_name}}", function( data ) {
+                            update_status("{{app.short_name}}_status", data);
+                            update_status_icon("{{app.short_name}}_status_icon", data);
+                            update_sso_token("{{app.short_name}}", data);
+                        });
+                    {% endif %}
+                {% endfor %}
+
+                // Update device info
+                $.getJSON("/api/get_device_info", function( data ) {
+                    //console.log("Device Data: " + JSON.stringify(data))
+                    if ("disk_usage" in data && data["disk_usage"] != null) {
+                        $("#device_drive_usage").html(data["disk_usage"]);
+                    }
+                    if ("cpu" in data && data["cpu"] != null) {
+                        $("#device_cpu_usage").html(data["cpu"]);
+                    }
+                    if ("ram" in data && data["ram"] != null) {
+                        $("#device_ram_usage").html(data["ram"]);
+                    }
+                    if ("temp" in data && data["temp"] != null) {
+                        $("#device_temp").html(data["temp"] + " &deg;C");
+                        if (data["temp"] != "...") {
+                            $("#temp_tile").show();
+                        }
+                    }
+                    if ("is_installing_docker_images" in data && data["is_installing_docker_images"] != null) {
+                        if (is_installing_docker_images != data["is_installing_docker_images"]) {
+                            refresh_page();
+                        }
+                    }
+                    if ("is_electrs_active" in data && data["is_electrs_active"] != null) {
+                        if (electrs_active != data["is_electrs_active"]) {
+                            refresh_page();
+                        }
+                    }
+                });
+
+                // Check if we need a full page refresh (errors, status changes, etc...)
+                $.getJSON("/api/homepage_needs_refresh", function( data ) {
+                    if ("needs_refresh" in data && data["needs_refresh"] != null) {
+                        if (data["needs_refresh"] == "yes") {
+                            refresh_page()
+                        }
+                    }
+                });
+            }
+
+            // Run when page ready
+            $(document).ready(function() {
                 $( document ).tooltip();
 
+                $("#lit").on("click", function() {
+                    url = 'https://'+location.hostname+':8443'
+                    window.open(url,'_blank');
+                })
+
                 $("#lndhub").on("click", function() {
-                    url = 'http://'+location.hostname+':3000'
+                    port="3000"
+                    if (location.protocol == "https:") {
+                        port="3001"
+                    }
+                    url = location.protocol+'//'+location.hostname+':'+port
                     window.open(url,'_blank');
                 })
 
                 $("#rtl").on("click", function() {
-                    url = 'http://'+location.hostname+':3010'
+                    port="3010"
+                    if (location.protocol == "https:") {
+                        port="3011"
+                    }
+                    url = location.protocol+'//'+location.hostname+':'+port
                     window.open(url,'_blank');
                 })
 
                 $("#lnbits").on("click", function() {
-                    url = 'http://'+location.hostname+':5000'
+                    port="5000"
+                    if (location.protocol == "https:") {
+                        port="5001"
+                    }
+                    url = location.protocol+'//'+location.hostname+':'+port
                     window.open(url,'_blank');
                 })
 
                 $("#thunderhub").on("click", function() {
-                    url = 'http://'+location.hostname+':3030'
+                    port="3030"
+                    if (location.protocol == "https:") {
+                        port="3031"
+                    }
+                    // Swap to use SSO (make optional? - needing password is safer)
+                    url = location.protocol+'//'+location.hostname+':'+port
+                    //url = location.protocol+'//'+location.hostname+':'+port+'/sso?'+'token='+application_data["thunderhub"]["sso_token"]
                     window.open(url,'_blank');
                 })
 
-                $("#lnd_admin").on("click", function() {
-                    url = 'http://'+location.hostname+':3004'
+                $("#ckbunker").on("click", function() {
+                    port="9823"
+                    if (location.protocol == "https:") {
+                        port="9824"
+                    }
+                    url = location.protocol+'//'+location.hostname+':'+port
                     window.open(url,'_blank');
                 })
 
                 $("#btcrpcexplorer").on("click", function() {
-                    url = 'http://'+location.hostname+':3002'
+                    port="3002"
+                    if (location.protocol == "https:") {
+                        port="3003"
+                    }
+                    url = location.protocol+'//'+location.hostname+':'+port+'/?'+'token='+application_data["btcrpcexplorer"]["sso_token"]
                     window.open(url,'_blank');
                 })
 
@@ -48,93 +437,29 @@
                     window.open(url,'_blank');
                 })
 
-                $("#mempoolspace").on("click", function() {
-                    url = 'http://'+location.hostname+':4080'
+                $("#mempool").on("click", function() {
+                    port="4080"
+                    if (location.protocol == "https:") {
+                        port="4081"
+                    }
+                    url = location.protocol+'//'+location.hostname+':'+port
                     window.open(url,'_blank');
                 })
 
                 $("#btcpayserver").on("click", function() {
-                    url = 'http://'+location.hostname+':49392'
+                    port="49392"
+                    if (location.protocol == "https:") {
+                        port="49393"
+                    }
+                    url = location.protocol+'//'+location.hostname+':'+port
                     window.open(url,'_blank');
                 })
 
-                $("#toggle-electrs").on("click", function() {
-                    if (electrs_enabled)
-                    {
-                        // Disable electrs
-                        window.location.href="/toggle-electrs"
-                    }
-                    else
-                    {
-                        // Enable electrs
-                        var okFunction = function() {
-                            window.location.href="/toggle-electrs"
-                        }
-                        openConfirmDialog("confirm-dialog", 
-                                          "Enable Electrum Server", 
-                                          "Enabling Electrum Server will take several days to fully sync for \
-                                           the first time. Your myNode may run slowly during this period.<br/><br/> \
-                                           Would you like to enable electrum server?",
-                                           okFunction)
-                    }
-                    return false
-                });
-
-                $("#toggle-vpn").on("click", function() {
-                    if (vpn_enabled)
-                    {
-                        // Disable vpn
-                        window.location.href="/toggle-vpn"
-                    }
-                    else
-                    {
-                        // Enable vpn
-                        var okFunction = function() {
-                            window.location.href="/toggle-vpn"
-                        }
-                        openConfirmDialog("confirm-dialog", 
-                                          "Enable VPN", 
-                                          "Enabling VPN will set your IP to a static IP rather than a dynamic one via DHCP. \
-                                           The initial setup may take about an hour.<br/><br/> \
-                                           Would you like to enable VPN?",
-                                           okFunction)
-                    }
-                    return false
-                });
-
-                $("#toggle-btcrpcexplorer").on("click", function() {
-                        window.location.href="/toggle-btcrpcexplorer"
-                });
-
-                $("#toggle-mempoolspace").on("click", function() {
-                        window.location.href="/toggle-mempoolspace"
-                });
-
-                $("#toggle-btcpayserver").on("click", function() {
-                        window.location.href="/toggle-btcpayserver"
-                });
-
-                $("#toggle-caravan").on("click", function() {
-                        window.location.href="/toggle-caravan"
-                });
-
-                $("#toggle-specter").on("click", function() {
-                        window.location.href="/toggle-specter"
-                });
-
-                $("#toggle-lnbits").on("click", function() {
-                        window.location.href="/toggle-lnbits"
-                });
-
-                $("#toggle-thunderhub").on("click", function() {
-                        window.location.href="/toggle-thunderhub"
-                });
-
-                function lndconnect() {
-                    $("#lndconnect_form").submit();
-                    lndconnect_dialog.dialog( "close" );
+                function pair_wallet_submit() {
+                    $("#pair_wallet_form").submit();
+                    pair_wallet_dialog.dialog( "close" );
                 }
-                lndconnect_dialog = $( "#lndconnect-dialog" ).dialog({
+                pair_wallet_dialog = $( "#pair-wallet-dialog" ).dialog({
                     autoOpen: false,
                     resizable: false,
                     height: "auto",
@@ -142,21 +467,21 @@
                     modal: true,
                     position: { my: "center top", at: "center top", of: window, collision: "none" },
                     buttons: {
-                        "View": lndconnect,
+                        "View": pair_wallet_submit,
                         Cancel: function() {
-                            lndconnect_dialog.dialog( "close" );
+                            pair_wallet_dialog.dialog( "close" );
                         }
                     },
                     open: function() {
-                        $("#password_lndconnect").val("")
+                        $("#password_pair_wallet").val("")
                     }
                 });
-                $("#lndconnect").on("click", function() {
-                    lndconnect_dialog.dialog( "open" );
+                $("#pair_wallet").on("click", function() {
+                    pair_wallet_dialog.dialog( "open" );
                 });
 
-                $("#lndconnect_form").on("submit", function() {
-                    lndconnect_dialog.dialog( "close" );
+                $("#pair_wallet_form").on("submit", function() {
+                    pair_wallet_dialog.dialog( "close" );
                 });
 
                 $("#https").on("click", function() {
@@ -182,6 +507,14 @@
                     $("#https").show();
                 }
 
+                // Update info every 15 seconds
+                const update_interval = setInterval(update_page, 15000);
+                update_page();
+
+                // If pinned lightning, auto open lightning details
+                {% if lnd_wallet_exists and lnd_ready and ui_settings['pinned_lightning_details'] %}
+                setTimeout(toggleLightningDetails, 1500);
+                {% endif %}
             });
         </script>
      </head>
@@ -189,9 +522,21 @@
     <body>
         {% include 'includes/logo_header.html' %}
         
+        <div class="mynode_top_left_div">
+            <!-- Nothing yet -->
+            {% if upgrade_available %}
+                <a class="ui-button ui-widget ui-corner-all mynode_back" href="/settings" title="Upgrade Available"><span class="ui-icon ui-icon-arrowthick-1-n"></span>upgrade available&nbsp;</a>
+            {% endif %}
+        </div>
+
         <div class="mynode_top_right_div">
             {% if upgrade_available %}
-            <a class="ui-button ui-widget ui-corner-all mynode_back" href="/settings"><span class="ui-icon ui-icon-notice"></span>upgrade available&nbsp;</a>
+                <a class="ui-button ui-widget ui-corner-all mynode_back" href="/settings" title="Upgrade Available">&nbsp;<span class="ui-icon ui-icon-arrowthick-1-n"></span>&nbsp;</a>
+            {% endif %}
+            {% if ui_settings['darkmode'] %}
+                <a class="ui-button ui-widget ui-corner-all mynode_back" href="/settings/toggle-darkmode-home" title="Disable Darkmode">&nbsp;<span class="ui-icon ui-icon-lightbulb"></span>&nbsp;</a>
+            {% else %}
+                <a class="ui-button ui-widget ui-corner-all mynode_back" href="/settings/toggle-darkmode-home" title="Enable Darkmode">&nbsp;<span class="ui-icon ui-icon-lightbulb"></span>&nbsp;</a>
             {% endif %}
             <a class="ui-button ui-widget ui-corner-all mynode_back" id="https" title="Use HTTPS" style="display: none;" href="#">&nbsp;<span class="ui-icon ui-icon-locked"></span>&nbsp;</a>
             <a class="ui-button ui-widget ui-corner-all mynode_back" href="/logout" title="Logout"><span class="ui-icon ui-icon-close"></span>&nbsp;</a>
@@ -224,7 +569,7 @@
 
         {% if product_key_skipped %}
         <div class="main_header">Community Edition</div>
-        <div class="upgrade_ad_main_page">
+        <div class="main_page_warning_block" style="padding-left: 15px;">
             <p>
                 You are currently running myNode Community Edition. Upgrading to myNode Premium provides:
                 <br/>
@@ -250,6 +595,7 @@
                 <div class="app_title">Settings</div>
                 <div class="app_status"></div>
                 <div class="app_contents">
+                    <a class="ui-button ui-widget ui-corner-all mynode_button" href="/apps">Applications</a>
                     <a class="ui-button ui-widget ui-corner-all mynode_button" href="/status">Status</a>
                     <a class="ui-button ui-widget ui-corner-all mynode_button" href="/settings">Settings</a>
                 </div>
@@ -259,31 +605,30 @@
                 <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/drive.png")}}"/></div>
                 <div class="app_title">Disk Usage</div>
                 <div class="app_status"></div>
-                <div class="app_contents"><div class="drive_usage">{{drive_usage}}</div></div>
+                <div class="app_contents"><div class="device_status_info" id="device_drive_usage">{{drive_usage}}</div></div>
             </div>
             <div class="app_tile">
                 <div class="app_status_icon"></div>
                 <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/cpu.png")}}"/></div>
                 <div class="app_title">CPU</div>
                 <div class="app_status"></div>
-                <div class="app_contents"><div class="drive_usage">{{cpu_usage}}</div></div>
+                <div class="app_contents"><div class="device_status_info" id="device_cpu_usage">{{cpu_usage}}</div></div>
             </div>
             <div class="app_tile">
                 <div class="app_status_icon"></div>
                 <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/ram.png")}}"/></div>
                 <div class="app_title">RAM</div>
                 <div class="app_status"></div>
-                <div class="app_contents"><div class="drive_usage">{{ram_usage}}</div></div>
+                <div class="app_contents"><div class="device_status_info" id="device_ram_usage">{{ram_usage}}</div></div>
             </div>
-            {% if device_temp != '...' %}
-            <div class="app_tile">
+            <div class="app_tile" id="temp_tile" {% if device_temp == '...' %}style="display: none;"{% endif %}>
                 <div class="app_status_icon"></div>
                 <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/temperature.png")}}"/></div>
                 <div class="app_title">Temperature</div>
                 <div class="app_status"></div>
-                <div class="app_contents"><div class="drive_usage">{{device_temp}} &deg;C</div></div>
+                <div class="app_contents"><div class="device_status_info" id="device_temp">{{device_temp}} &deg;C</div></div>
             </div>
-            {% endif %}
+            
             <!--
             <div class="app_tile">
                 <div class="app_status_icon"></div>
@@ -296,7 +641,7 @@
         </div>
 
         {% if product_key_skipped %}
-        <div class="upgrade_ad_main_page">
+        <div class="main_page_warning_block">
             <p style="text-align: center;"><b>Tip Address</b><br/>bc1q75z4fj946pqucfu9gasxdrzma0z4seh8f58sfd</p>
         </div>
         {% endif %}
@@ -304,15 +649,15 @@
         <div id="confirm-dialog"></div>
         <div id="info-dialog"></div>
 
-        <div id="lndconnect-dialog" title="LND Connect Access" style="display:none;">
-            <form id="lndconnect_form" name="lndconnect_form" action="/lnd/lndconnect" method="POST">
-                <p>LND Connect info will allow access to your Lightning Wallet! Do not share this info with others
+        <div id="pair-wallet-dialog" title="Pair Wallet" style="display:none;">
+            <form id="pair_wallet_form" name="pair_wallet_form" action="/lnd/pair_wallet" method="POST">
+                <p>Pairing a wallet will give another device access to your Lightning Wallet! Do not share this info with others
                     or they will be able to control your funds.</p>
-                <p>Please enter your password to view your lndconnect codes.</p>
+                <p>Please enter your password to view your pairing information.</p>
                 <b>Password:</b>
                 <br/>
-                <input type="password" name="password_lndconnect" id="password_lndconnect" value="" class="text ui-widget-content ui-corner-all">
-                <input type="hidden" name="lndconnect_from_homepage" id="lndconnect_from_homepage" value="1"/>
+                <input type="password" name="password_pair_wallet" id="password_pair_wallet" value="" class="text ui-widget-content ui-corner-all">
+                <input type="hidden" name="pair_wallet_from_homepage" id="pair_wallet_from_homepage" value="1"/>
 
                 <!-- Allow form submission with keyboard without duplicating the dialog button -->
                 <input type="submit" tabindex="-1" style="position:absolute; top:-1000px">
@@ -326,6 +671,12 @@
                 <br/><br/>
                 <a href="/settings/shutdown-device" class="ui-button ui-widget ui-corner-all" style="width: 80%; margin: auto;">Shutdown</a>
             </center>
+        </div>
+
+        <div id="loading_spinner_overlay" class="loading_spinner_overlay" style="display:none;">
+            <img id="loading_spinner" class="loading_image" src="{{ url_for('static', filename="images/loading.gif")}}"/>
+            <br/>
+            Loading...
         </div>
         
         {% include 'includes/footer.html' %}

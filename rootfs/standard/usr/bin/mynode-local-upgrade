@@ -18,8 +18,9 @@ else
     ip_address="$1"
 fi
 
-# Clear /var/log tmpfs
+# Clear /var/log tmpfs (remake necessary folders)
 rm -rf /var/log/*
+mkdir -p /var/log/nginx
 
 # Delete any existing rootfs tarball and download new one
 rm -f mynode_rootfs_${DEVICE_TYPE}.tar.gz
@@ -33,7 +34,7 @@ tar -xf /tmp/mynode_rootfs_${DEVICE_TYPE}.tar.gz -C /tmp/rootfs/
 echo Done!
 
 # Install files
-if [ $IS_X86 = 1 ]; then
+if [ $IS_X86 = 1 ] || [ $IS_RASPI4_ARM64 = 1 ]; then
     rsync -r -K /tmp/rootfs/out/rootfs_${DEVICE_TYPE}/* /
 else
     cp -rf /tmp/rootfs/out/rootfs_${DEVICE_TYPE}/* /
@@ -51,7 +52,6 @@ if [ "$#" -ge 2 ]; then
     if [ "$2" = "www" ]; then
         echo "Restarting www service..."
         systemctl restart www
-        systemctl restart https
     elif [ "$2" = "files" ]; then
         echo "Only updating files... Done."
     elif [ "$2" = "reboot" ]; then

@@ -93,7 +93,7 @@
                     }
                     openConfirmDialog("confirm-dialog",
                                       "Reset Bitcoin Blockchain",
-                                      "Resetting the blockchain will restart bitcoind from scratch or from QuickSync, " +
+                                      "Resetting the blockchain will restart bitcoin from scratch or from QuickSync, " +
                                       "depending on your settings. This may take a long time. "+
                                       "Would you still like to reset the bitcoin blockchain?",
                                       okFunction)
@@ -106,7 +106,7 @@
                     }
                     openConfirmDialog("confirm-dialog",
                                       "Reset QuickSync",
-                                      "<p>Restarting QuickSync will delete all current bitcoind blockchain data and redownload " +
+                                      "<p>Restarting QuickSync will delete all current bitcoin blockchain data and redownload " +
                                       "the pre-synced blockchain. This will take a while.</p>"+
                                       "<p>Would you still like to restart QuickSync?</p>",
                                       okFunction)
@@ -162,7 +162,6 @@
                     $("#factory_reset_form").submit();
                     factory_reset_dialog.dialog( "close" );
                 }
-
                 factory_reset_dialog = $( "#factory-reset-dialog" ).dialog({
                     autoOpen: false,
                     resizable: false,
@@ -180,9 +179,33 @@
                         $("#password_factory_reset").val("")
                     }
                 });
-
                 $("#factory-reset").on("click", function() {
                     factory_reset_dialog.dialog( "open" );
+                });
+
+                function formatExternalDrive() {
+                    $("#format_external_drive_form").submit();
+                    format_external_drive_dialog.dialog( "close" );
+                }
+                format_external_drive_dialog = $( "#format-external-drive-dialog" ).dialog({
+                    autoOpen: false,
+                    resizable: false,
+                    height: "auto",
+                    width: 600,
+                    modal: true,
+                    position: { my: "center top", at: "center top", of: window, collision: "none" },
+                    buttons: {
+                        "Format Drive": formatExternalDrive,
+                        Cancel: function() {
+                            format_external_drive_dialog.dialog( "close" );
+                        }
+                    },
+                    open: function() {
+                        $("#password_factory_reset").val("")
+                    }
+                });
+                $("#format-external-drive").on("click", function() {
+                    format_external_drive_dialog.dialog( "open" );
                 });
 
                 $("#reset_docker_button").button();
@@ -217,14 +240,30 @@
                     }
                 });
 
+                showing_upgrade_log=0;
                 $("#show_upgrade_status").on("click", function() {
-                    $("#show_upgrade_status").hide(0);
-                    $("#upgrade_status").show();
+                    if (showing_upgrade_log == 0) {
+                        $("#show_upgrade_status").html("Hide Upgrade Log");
+                        $("#upgrade_status").show();
+                        showing_upgrade_log = 1;
+                    } else {
+                        $("#show_upgrade_status").html("Show Upgrade Log");
+                        $("#upgrade_status").hide();
+                        showing_upgrade_log = 0;
+                    }
                 });
 
+                showing_upgrade_beta_log=0;
                 $("#show_upgrade_status_beta").on("click", function() {
-                    $("#show_upgrade_status_beta").hide(0);
-                    $("#upgrade_status_beta").show();
+                    if (showing_upgrade_beta_log == 0) {
+                        $("#show_upgrade_status_beta").html("Hide Upgrade Log");
+                        $("#upgrade_status_beta").show();
+                        showing_upgrade_beta_log = 1;
+                    } else {
+                        $("#show_upgrade_status_beta").html("Show Upgrade Log");
+                        $("#upgrade_status_beta").hide();
+                        showing_upgrade_beta_log = 0;
+                    }
                 });
 
                 $("#upgrade_changelog").on("click", function() {
@@ -246,17 +285,29 @@
                 });
 
                 $("#glances").on("click", function() {
-                    url = 'http://'+location.hostname+':61208'
+                    port="61208";
+                    if (location.protocol == "https:") {
+                        port="61209";
+                    }
+                    url = location.protocol+'//'+location.hostname+':'+port;
                     window.open(url,'_blank');
                 })
 
                 $("#netdata").on("click", function() {
-                    url = 'http://'+location.hostname+':19999'
+                    port="19999";
+                    if (location.protocol == "https:") {
+                        port="20000";
+                    }
+                    url = location.protocol+'//'+location.hostname+':'+port;
                     window.open(url,'_blank');
                 })
 
                 $("#linux_terminal").on("click", function() {
-                    url = 'http://'+location.hostname+':2222/ssh/host/'+"{{local_ip}}"
+                    port="2222";
+                    if (location.protocol == "https:") {
+                        port="2223";
+                    }
+                    url = location.protocol+'//'+location.hostname+':'+port+'/ssh/host/'+"{{local_ip}}";
                     window.open(url,'_blank');
                 })
 
@@ -328,6 +379,11 @@
                 $("#reinstall_button").on("click", function() {
                     window.location.href='/settings/reinstall-app?app='+reinstall_app_choice
                 });
+
+                $("#logout_days").selectmenu({width: 70});
+                $("#logout_hours").selectmenu({width: 70});
+
+                $("#background").selectmenu();
 
                 var swap_choice="";
                 $("#swap_size").selectmenu( {
@@ -403,19 +459,23 @@
 
         <br/>
         <div class="settings_block">
+            <a id="mynode"></a>
             <div class="settings_block_header">myNode</div>
             
             <div class="settings_block_subheader">Version</div>
-            <table border="0">
+            <table class="info_table">
                 <tr>
-                    <td>Current Version</td>
+                    <th>Current Version</th>
                     <td>{{current_version}}</td>
                     <td></td>
                 </tr>
                 <tr>
-                    <td>Latest Version</td>
+                    <th>Latest Version</th>
                     <td>{{latest_version}}</td>
-                    <td>&nbsp;<a href="/settings/get-latest-version" class="ui-button ui-widget ui-corner-all settings_button_small">Check for Updates</a></td>
+                    <td>
+                        &nbsp;<a href="/settings/get-latest-version" class="ui-button ui-widget ui-corner-all settings_button_small">Check for Updates</a>
+                        &nbsp;<button id="show_upgrade_status" class="ui-button ui-widget ui-corner-all settings_button_small">Show Upgrade Log</button>
+                    </td>
                 </tr>
             </table>
             {% if current_version != latest_version and latest_version != "" %}
@@ -428,109 +488,14 @@
             {% elif not product_key_skipped and upgrade_error %}
                 <p style="color: red;">It appears a recent upgrade may not have fully completed.</p>
                 <button id="upgrade" class="ui-button ui-widget ui-corner-all settings_button">Retry Upgrade</button>
-                <button id="show_upgrade_status" class="ui-button ui-widget ui-corner-all settings_button">Show Upgrade Logs</button>
-                <div id="upgrade_status" style='text-align: left; font-size: 12px; width: 800px; display: none;'><pre>{{upgrade_logs}}</pre></div>
             {% endif %}
+            <div id="upgrade_status" style='text-align: left; font-size: 12px; width: 800px; display: none;'><pre>{{upgrade_logs}}</pre></div>
 
             <div class="divider"></div>
 
+            {% include 'includes/info_table.html' %}
 
-            <div class="settings_block_subheader">
-                Info
-            </div>
-            <table border="0">
-                <tr>
-                    <td>Serial Number</td>
-                    <td style="padding-left: 20px;">{{serial_number}}</td>
-                </tr>
-                <tr>
-                    <td>Product Key</td>
-                    <td style="padding-left: 20px;">
-                        {% if product_key_skipped %}
-                            {{product_key}}
-                            &nbsp;<a href="/product-key" class="ui-button ui-widget ui-corner-all settings_button_small">Enter Product Key</a>
-                        {% else %}
-                            <button id="show_product_key" class="ui-button ui-widget ui-corner-all settings_button_small">Show</button>
-                            <span id="product_key" style="display: none;">{{product_key}}</span>
-                            &nbsp;<a href="/product-key" class="ui-button ui-widget ui-corner-all settings_button_small">Change</a>
-                        {% endif %}
-                    </td>
-                </tr>
-                <tr>
-                    <td>Device Type</td>
-                    <td style="padding-left: 20px;">{{device_type}}</td>
-                </tr>
-                <tr>
-                    <td>Device RAM</td>
-                    <td style="padding-left: 20px;">{{device_ram}} GB</td>
-                </tr>
-                <tr>
-                    <td>Local IP</td>
-                    <td style="padding-left: 20px;">{{local_ip}}</td>
-                </tr>
-                {% if has_checkin_error %}
-                <tr>
-                    <td>Server</td>
-                    <td style="padding-left: 20px; color: red;"><b>Error contacting mynodebtc.com via Tor!</b><br/>You may have issues checking for new versions or saving product keys.</td>
-                </tr>
-                {% endif %}
-                
-            </table>
-            <div class="divider"></div>
-
-            <div class="settings_block_subheader">Status</div>
-            <table border="0">
-                <tr>
-                    <td>Details</td>
-                    <td style="padding-left: 20px;">
-                        {% if is_netdata_enabled %}
-                            {% if is_bitcoin_synced %}
-                                {% if not is_installing_docker_images %}
-                                    <a id="netdata" class="ui-button ui-widget ui-corner-all settings_button_small" href="#">Open Netdata</a>
-                                {% else %}
-                                    <a class="ui-button ui-widget ui-corner-all settings_button_small" href="#" disabled>Netdata - Waiting on Docker</a>
-                                {% endif %}
-                            {% else %}
-                                <a class="ui-button ui-widget ui-corner-all settings_button_small" href="#" disabled>Netdata - Waiting on Bitcoin</a>
-                            {% endif %}
-                        {% endif %}
-                        <a id="glances" class="ui-button ui-widget ui-corner-all settings_button_small" href="#">Open Glances</a>
-                    </td>
-                </tr>
-                <tr>
-                    <td>Manage</td>
-                    <td style="padding-left: 20px;">
-                        <a id="linux_terminal" class="ui-button ui-widget ui-corner-all settings_button_small" href="#">Linux Terminal</a>
-                    </td>
-                </tr>
-                <tr>
-                    <td>Disk Usage</td>
-                    <td style="padding-left: 20px;">{{drive_usage}}</td>
-                </tr>
-                <tr>
-                    <td>CPU</td>
-                    <td style="padding-left: 20px;">{{cpu_usage}}</td>
-                </tr>
-                <tr>
-                    <td>RAM</td>
-                    <td style="padding-left: 20px;">{{ram_usage}}</td>
-                </tr>
-                {% if device_temp != '...' %}
-                <tr>
-                    <td>Temperature</td>
-                    <td style="padding-left: 20px;">{{device_temp}} &deg;C</td>
-                </tr>
-                {% endif %}
-                <tr>
-                    <td>Uptime</td>
-                    <td style="padding-left: 20px;">{{uptime}}</td>
-                </tr>
-                <tr>
-                    <td>Date</td>
-                    <td style="padding-left: 20px;">{{date}}</td>
-                </tr>
-            </table>
-            <div class="divider"></div>
+            {% include 'includes/status_table.html' %}
 
             <div class="settings_block_subheader">Change Log</div>
             <button id="show_mynode_changelog" class="ui-button ui-widget ui-corner-all settings_button">View Change Log</button>
@@ -542,17 +507,17 @@
             This will change the password you use in the myNode GUI, the password for SSH, and the password for apps like RTL.
             <br/><br/>
             <form action="/settings/password" method="POST">
-                <table border="0">
+                <table class="info_table">
                     <tr>
-                        <td>Current Password</td>
+                        <th>Current Password</th>
                         <td><input type="password" id="current_password" name="current_password" width="20" class="ui-corner-all settings_input"/></td>
                     </tr>
                     <tr>
-                        <td>Password</td>
+                        <th>Password</th>
                         <td><input type="password" id="password1" name="password1" width="20" class="ui-corner-all settings_input"/></td>
                     </tr>
                     <tr>
-                        <td>Repeat Password</td>
+                        <th>Repeat Password</th>
                         <td><input type="password" id="password2" name="password2" width="20" class="ui-corner-all settings_input"/></td>
                     </tr>
                 </table>
@@ -564,7 +529,20 @@
             <a href="/status" class="ui-button ui-widget ui-corner-all settings_button">Status</a>
         </div>
 
+
         <div class="settings_block">
+            <a id="applications"></a>
+            <div class="settings_block_header">Applications</div>
+
+            <div class="settings_block_subheader">Manage Applications</div>
+            You can view application information and manage app upgrades. 
+            <br/>
+            <a href="/apps" class="ui-button ui-widget ui-corner-all settings_button">Manage Apps</a>
+        </div>
+
+
+        <div class="settings_block">
+            <a id="ui"></a>
             <div class="settings_block_header">User Interface</div>
 
             <div class="settings_block_subheader">Dark Mode</div>
@@ -578,6 +556,45 @@
 
             <div class="divider"></div>
 
+            <div class="settings_block_subheader">Background</div>
+            For fun, you can set a background image.
+            <br/><br/>
+
+            <form action="/settings/set-background" method="POST">
+                <select name="background" id="background">
+                    <option value="none" {% if not ui_settings['background'] or ui_settings['background'] == "none" %}selected{% endif %}>None</option>
+                    <option value="laser_eyes" {% if ui_settings['background'] == "laser_eyes" %}selected{% endif %}>Laser Eyes</option>
+                    <option value="moon" {% if ui_settings['background'] == "moon" %}selected{% endif %}>Moon</option>
+                </select>
+                <input type="submit" id="background_save_button" value="Save" class="ui-button ui-widget ui-corner-all"/>
+            </form>
+
+            <div class="divider"></div>
+
+            <div class="settings_block_subheader">Automatic Logout</div>
+            Your myNode will logout automatically after a period of inactivity. It can be changed below.
+            <br/><br/>
+
+            <form action="/settings/logout_time" method="POST">
+                {% set logoutDays = [0,1,2,3,5,7,10,15,20,30,60,90] %}
+                {% set logoutHours = range(24) %}
+                Days: 
+                <select name="logout_days" id="logout_days">
+                    {% for d in logoutDays %}
+                    <option value="{{d}}" {% if logout_time_days == d %}selected{% endif %}>{{d}}</option>
+                    {% endfor %}
+                </select>
+                Hours: 
+                <select name="logout_hours" id="logout_hours">
+                    {% for h in logoutHours %}
+                    <option value="{{h}}" {% if logout_time_hours == h %}selected{% endif %}>{{h}}</option>
+                    {% endfor %}
+                </select>
+                <input type="submit" id="logout_save_button" value="Save" class="ui-button ui-widget ui-corner-all"/>
+            </form>
+
+            <div class="divider"></div>
+
             <div class="settings_block_subheader">Force HTTPS</div>
             You can force the myNode web interface to only use HTTPS.
             <br/><br/>
@@ -587,13 +604,11 @@
             </label>
             <br/><br/>
             <button id="https_forced" style="display: none;" class="ui-button ui-widget ui-corner-all settings_button_small">Save</button>
-
-            
-
         </div>
 
 
         <div class="settings_block">
+            <a id="device"></a>
             <div class="settings_block_header">Device</div>
 
             <div class="settings_block_subheader">Reboot Device</div>
@@ -622,6 +637,7 @@
 
 
         <div class="settings_block">
+            <a id="firewall"></a>
             <div class="settings_block_header">Firewall</div>
 
             <div class="settings_block_subheader">Rules</div>
@@ -641,6 +657,7 @@
 
 
         <div class="settings_block">
+            <a id="quicksync"></a>
             <div class="settings_block_header">QuickSync</div>
 
             <div class="settings_block_subheader">Toggle QuickSync</div>
@@ -691,6 +708,7 @@
 
 
         <div class="settings_block">
+            <a id="bitcoin"></a>
             <div class="settings_block_header">Bitcoin</div>
 
             <div class="settings_block_subheader">Edit Config</div>
@@ -702,7 +720,7 @@
             <i>You are currently using a custom Bitcoin config.</i>
             <br/><br/>
             {% endif %}
-            <a href="/bitcoind/config" class="ui-button ui-widget ui-corner-all settings_button">Edit Config</a>
+            <a href="/bitcoin/config" class="ui-button ui-widget ui-corner-all settings_button">Edit Config</a>
 
             <div class="divider"></div>
 
@@ -718,7 +736,7 @@
             <div class="divider"></div>
 
             <div class="settings_block_subheader">Rescan Blockchain</div>
-            Advanced: If you are having issues parsing the Bitcoin blockchain or blocks cannot be found, please try rescanning.
+            Advanced: If you are having issues seeing transactions in your wallets, try re-scanning the blockchain.
             <br/>
             <button id="rescan-blockchain" class="ui-button ui-widget ui-corner-all settings_button">Rescan Blockchain</button>
 
@@ -734,6 +752,7 @@
 
 
         <div class="settings_block">
+            <a id="lightning"></a>
             <div class="settings_block_header">Lightning</div>
 
             <div class="settings_block_subheader">Download Channel Backup</div>
@@ -758,13 +777,14 @@
 
             <div class="settings_block_subheader">Delete Lightning Wallet</div>
             {{lnd_delete_message}}
-            Advanced: This will delete your Lightning Wallet.
+            Advanced: This will delete your Lightning Wallet. It will delete both mainnet and testnet wallets if you have them.
             <br/>
             <button id="delete_lnd_wallet" class="ui-button ui-widget ui-corner-all settings_button">Delete Wallet</button>
         </div>
 
 
         <div class="settings_block">
+            <a id="electrum"></a>
             <div class="settings_block_header">Electrum Server</div>
             
             <div class="settings_block_subheader">Reset Electrum Server</div>
@@ -783,6 +803,7 @@
 
 
         <div class="settings_block">
+            <a id="tor"></a>
             <div class="settings_block_header">Tor</div>
 
             <div class="settings_block_subheader">Use Tor for Bitcoin and Lightning</div>
@@ -822,12 +843,13 @@
         </div>
 
         <div class="settings_block">
+            <a id="services"></a>
             <div class="settings_block_header">Services</div>
             
             <div class="settings_block_subheader">Netdata</div>
             This will enable or disable Netdata device monitoring.
             <br/>
-            {% if is_netdata_enabled %}
+            {% if netdata_enabled %}
                 <a href="/settings/toggle-netdata" class="ui-button ui-widget ui-corner-all settings_button">Disable</a>
             {% else %}
                 <a href="/settings/toggle-netdata" class="ui-button ui-widget ui-corner-all settings_button">Enable</a>
@@ -836,6 +858,7 @@
         </div>
 
         <div class="settings_block">
+            <a id="docker"></a>
             <div class="settings_block_header">Docker</div>
             
             <div class="settings_block_subheader">Reset Docker</div>
@@ -845,7 +868,31 @@
         </div>
 
         <div class="settings_block">
+            <a id="clone_tool"></a>
+            <div class="settings_block_header">Clone Tool</div>
+            
+            <div class="settings_block_subheader">Clone Tool</div>
+            This will reboot your device and open the clone tool. It can be used to migrate to a larger external drive.
+            <br/>
+            <a href="/settings/open-clone-tool" class="ui-button ui-widget ui-corner-all settings_button">Open Clone Tool</a>
+        </div>
+
+        <div class="settings_block">
+            <a id="advanced"></a>
             <div class="settings_block_header">Advanced</div>
+
+            <div class="settings_block_subheader">Toggle Testnet</div>
+            Testnet can be enabled for Bitcoin and Lightning, which can be used to test various features, but may cause other applications to 
+            fail or become unstable if enabled. This testnet toggle does not work if you have customized your bitcoin or lnd configs. This will 
+            reboot your device.
+            <br/>
+            {% if not is_testnet_enabled %}
+                <a href="/settings/toggle-testnet" class="ui-button ui-widget ui-corner-all settings_button">Enable Testnet</a>
+            {% else %}
+                <a href="/settings/toggle-testnet" class="ui-button ui-widget ui-corner-all settings_button">Disable Testnet</a>
+            {% endif %}
+
+            <div class="divider"></div>
 
             <div class="settings_block_subheader">Reset HTTPS Certificates</div>
             This will regenerate your HTTPS certificates.
@@ -862,26 +909,11 @@
 
             <select name="reinstall_app" id="reinstall_app">
                 <option value="none" selected="selected">Choose...</option>
-                <option value="bitcoin">Bitcoin</option>
-                <option value="lnd">LND</option>
-                <option value="btcrpcexplorer">BTC RPC Explorer</option>
-                <option value="caravan">Caravan</option>
-                <option value="dojo">Dojo</option>
-                <option value="joinmarket">JoinMarket</option>
-                <option value="lnbits">Lnbits</option>
-                <option value="loopd">Lightning Loop</option>
-                <option value="webssh2">Linux Terminal</option>
-                <option value="lndconnect">LND Connect</option>				
-                <option value="lndhub">LNDHub</option>
-                <option value="mempoolspace">Mempool</option>	
-                <option value="netdata">Netdata</option>
-                <option value="specter">Specter</option>			
-                <option value="rtl">RTL</option>
-                <option value="thunderhub">Thunderhub</option>
-                <option value="tor">Tor</option>
-                <option value="ufw">UFW</option>
-                <option value="whirlpool">Whirlpool</option>
-
+                {% for app in apps %}
+                    {% if app.can_reinstall %}
+                        <option value="{{app.short_name}}">{{app.name}}</option>
+                    {% endif %}
+                {% endfor %}
             </select>
             <button id="reinstall_button">Reinstall</button>
 
@@ -905,16 +937,38 @@
             
             <div class="divider"></div>
 
-            <div class="settings_block_subheader">Factory Reset</div>
-            This will factory reset your mynode and all storage will be completely reset.
+            <div class="settings_block_subheader">Remount External Drive</div>
+            This will attempt to remount your external drive as read/write if it is read-only.
             <br/>
-            Make sure you have backed up all your keys and wallets!
+            <a href="/settings/remount-external-drive" class="ui-button ui-widget ui-corner-all settings_button">Remount Drive</a>
+
+            <div class="divider"></div>
+
+            <div class="settings_block_subheader">Check External Drive</div>
+            The external drive will be checked for errors automatically on each boot. This can be disabled, but is not recommended.
+            <br/>
+            <a href="/settings/toggle-check-external-drive" class="ui-button ui-widget ui-corner-all settings_button">{% if skip_fsck %}Enable{% else %}Disable{% endif %}</a>
+
+
+            <div class="divider"></div>
+
+            <div class="settings_block_subheader">Format External Drive</div>
+            This will reboot your device and re-prompt for formatting the drive. If your external drive has been corrupted, this 
+            may help and will be slightly less destructive than a factory reset. Make sure you have backed up all your keys and wallets!
+            <br/>
+            <button id="format-external-drive" class="ui-button ui-widget ui-corner-all settings_button">Format Drive</button>
+
+            <div class="divider"></div>
+
+            <div class="settings_block_subheader">Factory Reset</div>
+            This will factory reset your mynode and all storage will be completely reset. Make sure you have backed up all your keys and wallets!
             <br/>
             <button id="factory-reset" class="ui-button ui-widget ui-corner-all settings_button">Factory Reset</button>
         </div>
 
 
         <div class="settings_block">
+            <a id="developer"></a>
             <div class="settings_block_header">Developer</div>
 
             {% if not product_key_skipped %}
@@ -930,14 +984,14 @@
                 <div class="settings_block_subheader">Install Beta</div>
                 You can install beta releases of myNode software to help test. These may be less stable.
                 <br/><br/>
-                <table border="0">
+                <table class="info_table">
                     <tr>
-                        <td>Current Beta Version</td>
+                        <th>Current Beta Version</th>
                         <td>{{current_beta_version}}</td>
                         <td></td>
                     </tr>
                     <tr>
-                        <td>Latest Beta Version</td>
+                        <th>Latest Beta Version</th>
                         <td>{{latest_beta_version}}</td>
                         <td>&nbsp;<a href="/settings/get-latest-version" class="ui-button ui-widget ui-corner-all settings_button_small">Check for Updates</a></td>
                     </tr>
@@ -1012,6 +1066,21 @@
                 <b>Password:</b>
                 <br/>
                 <input type="password" name="password_factory_reset" id="password_factory_reset" value="" class="text ui-widget-content ui-corner-all">
+            
+                <!-- Allow form submission with keyboard without duplicating the dialog button -->
+                <input type="submit" tabindex="-1" style="position:absolute; top:-1000px">
+            </form>
+        </div>
+
+        <div id="format-external-drive-dialog" title="Format Drive" style="display:none;">
+            <form id="format_external_drive_form" name="format_external_drive_form" action="/settings/format-external-drive" method="POST">
+                <p>Formatting your drive will revert most storage to the initial state.</p>
+                <p class='red_text'>BACKUP ALL KEYS AND WALLETS BEFORE RESETTING YOUR DEVICE!</p>
+                <p>This will reboot your device.</p>
+                <p>Would you still like to format the external drive?</p>
+                <b>Password:</b>
+                <br/>
+                <input type="password" name="password_format_external_drive" id="password_format_external_drive" value="" class="text ui-widget-content ui-corner-all">
             
                 <!-- Allow form submission with keyboard without duplicating the dialog button -->
                 <input type="submit" tabindex="-1" style="position:absolute; top:-1000px">

@@ -1,7 +1,7 @@
 from config import *
-from flask import Blueprint, render_template, session, abort, Markup, request, redirect, send_from_directory, url_for, flash
+from flask import Blueprint, render_template, session, abort, Markup, request, redirect, send_from_directory, url_for, flash, current_app
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
-from bitcoind import is_bitcoind_synced
+from bitcoin import is_bitcoin_synced
 from bitcoin_info import using_bitcoin_custom_config
 from lightning_info import using_lnd_custom_config
 from pprint import pprint, pformat
@@ -10,6 +10,8 @@ from thread_functions import *
 from user_management import check_logged_in
 from lightning_info import *
 from thread_functions import *
+from utilities import *
+from application_info import *
 import pam
 import time
 import os
@@ -38,34 +40,6 @@ def page_settings():
     date = get_system_date()
     local_ip = get_local_ip()
 
-
-    # Get Startup Status
-    startup_status_log = get_journalctl_log("mynode")
-
-    # Get QuickSync Status
-    quicksync_enabled = is_quicksync_enabled()
-    quicksync_status = "Disabled"
-    quicksync_status_color = "gray"
-    quicksync_status_log = "DISABLED"
-    if quicksync_enabled:
-        quicksync_status = get_service_status_basic_text("quicksync")
-        quicksync_status_color = get_service_status_color("quicksync")
-        try:
-            quicksync_status_log = subprocess.check_output(["mynode-get-quicksync-status"]).decode("utf8")
-        except:
-            quicksync_status_log = "ERROR"
-
-    # Get Bitcoin Status
-    bitcoin_status_log = ""
-    try:
-        bitcoin_status_log = subprocess.check_output(["tail","-n","200","/mnt/hdd/mynode/bitcoin/debug.log"]).decode("utf8")
-        lines = bitcoin_status_log.split('\n')
-        lines.reverse()
-        bitcoin_status_log = '\n'.join(lines)
-    except:
-        bitcoin_status_log = "ERROR"
-
-
     # Get QuickSync Rates
     upload_rate = 100
     download_rate = 100
@@ -76,9 +50,11 @@ def page_settings():
         upload_rate = 100
         download_rate = 100
 
+    logout_time_days, logout_time_hours = get_flask_session_timeout()
 
     templateData = {
         "title": "myNode Settings",
+        "apps": get_all_applications(order_by="alphabetic"),
         "password_message": "",
         "current_version": current_version,
         "latest_version": latest_version,
@@ -96,21 +72,28 @@ def page_settings():
         "product_key_error": pk_error,
         "changelog": changelog,
         "is_https_forced": is_https_forced(),
+        "logout_time_days": logout_time_days,
+        "logout_time_hours": logout_time_hours,
         "using_bitcoin_custom_config": using_bitcoin_custom_config(),
         "using_lnd_custom_config": using_lnd_custom_config(),
-        "is_bitcoin_synced": is_bitcoind_synced(),
+        "is_bitcoin_synced": is_bitcoin_synced(),
         "is_installing_docker_images": is_installing_docker_images(),
         "firewall_rules": get_firewall_rules(),
-        "is_quicksync_disabled": not quicksync_enabled,
-        "is_netdata_enabled": is_netdata_enabled(),
+        "is_testnet_enabled": is_testnet_enabled(),
+        "is_quicksync_disabled": not is_quicksync_enabled(),
+        "netdata_enabled": is_service_enabled("netdata"),
         "is_uploader_device": is_uploader(),
         "download_rate": download_rate,
         "upload_rate": upload_rate,
         "is_btc_lnd_tor_enabled": is_btc_lnd_tor_enabled(),
         "is_aptget_tor_enabled": is_aptget_tor_enabled(),
+        "skip_fsck": skip_fsck(),
         "uptime": uptime,
         "date": date,
         "local_ip": local_ip,
+        "throttled_data": get_throttled_data(),
+        "oom_error": has_oom_error(),
+        "oom_info": get_oom_error_info(),
         "drive_usage": get_drive_usage(),
         "cpu_usage": get_cpu_usage(),
         "ram_usage": get_ram_usage(),
@@ -122,6 +105,7 @@ def page_settings():
 @mynode_settings.route("/status")
 def page_status():
     check_logged_in()
+    t1 = get_system_time_in_ms()
 
     current_version = get_current_version()
     latest_version = get_latest_version()
@@ -141,43 +125,39 @@ def page_status():
 
 
     # Get Startup Status
-    startup_status_log = get_journalctl_log("mynode")
+    #startup_status_log = get_journalctl_log("mynode")
 
     # Get QuickSync Status
     quicksync_enabled = is_quicksync_enabled()
     quicksync_status = "Disabled"
     quicksync_status_color = "gray"
-    quicksync_status_log = "DISABLED"
+    quicksync_status_log = get_quicksync_log()
     if quicksync_enabled:
         quicksync_status = get_service_status_basic_text("quicksync")
         quicksync_status_color = get_service_status_color("quicksync")
-        try:
-            quicksync_status_log = subprocess.check_output(["mynode-get-quicksync-status"]).decode("utf8")
-        except:
-            quicksync_status_log = "ERROR"
 
     # Get Bitcoin Status
-    bitcoin_status_log = ""
-    try:
-        bitcoin_status_log = subprocess.check_output(["tail","-n","200","/mnt/hdd/mynode/bitcoin/debug.log"]).decode("utf8")
-        lines = bitcoin_status_log.split('\n')
-        lines.reverse()
-        bitcoin_status_log = '\n'.join(lines)
-    except:
-        bitcoin_status_log = "ERROR"
+    # bitcoin_status_log = get_file_log( get_bitcoin_log_file() )
+    # GET lnd, loop, pool logs from file???
+    #lnd_status_log = get_file_log("/mnt/hdd/mynode/lnd/logs/bitcoin/mainnet/lnd.log")
+    #loop_status_log = get_file_log("/mnt/hdd/mynode/loop/logs/mainnet/loopd.log")
+    #pool_status_log = get_file_log("/mnt/hdd/mynode/pool/logs/mainnet/poold.log")
 
     # Get Status
-    lnd_status_log = get_journalctl_log("lnd")
-    loopd_status_log = get_journalctl_log("loopd")
-    lndhub_status_log = get_journalctl_log("lndhub")
-    tor_status_log = get_journalctl_log("tor@default")
-    electrs_status_log = get_journalctl_log("electrs")
-    netdata_status_log = get_journalctl_log("netdata")
-    rtl_status_log = get_journalctl_log("rtl")
-    lnbits_status_log = get_journalctl_log("lnbits")
-    thunderhub_status_log = get_journalctl_log("thunderhub")
-    docker_status_log = get_journalctl_log("docker")
-    docker_image_build_status_log = get_journalctl_log("docker_images")
+    # lnd_status_log = get_journalctl_log("lnd")
+    # loop_status_log = get_journalctl_log("loop")
+    # pool_status_log = get_journalctl_log("pool")
+    # lndhub_status_log = get_journalctl_log("lndhub")
+    # tor_status_log = get_journalctl_log("tor@default")
+    # electrs_status_log = get_journalctl_log("electrs")
+    # netdata_status_log = get_journalctl_log("netdata")
+    # rtl_status_log = get_journalctl_log("rtl")
+    # lnbits_status_log = get_journalctl_log("lnbits")
+    # thunderhub_status_log = get_journalctl_log("thunderhub")
+    # ckbunker_status_log = get_journalctl_log("ckbunker")
+    # sphinxrelay_status_log = get_journalctl_log("sphinxrelay")
+    # docker_status_log = get_journalctl_log("docker")
+    # docker_image_build_status_log = get_journalctl_log("docker_images")
 
     # Find running containers
     running_containers = get_docker_running_containers()
@@ -202,79 +182,102 @@ def page_status():
         "lnd_wallet_exists": lnd_wallet_exists(),
         "is_installing_docker_images": is_installing_docker_images(),
         "running_containers": running_containers,
-        "startup_status_log": startup_status_log,
+        #"startup_status_log": startup_status_log,
         "startup_status": get_service_status_basic_text("mynode"),
         "startup_status_color": get_service_status_color("mynode"),
-        "quicksync_status_log": quicksync_status_log,
+        #"quicksync_status_log": quicksync_status_log,
         "quicksync_status": quicksync_status,
         "quicksync_status_color": quicksync_status_color,
-        "is_bitcoin_synced": is_bitcoind_synced(),
-        "bitcoin_status_log": bitcoin_status_log,
-        "bitcoin_status": get_service_status_basic_text("bitcoind"),
-        "bitcoin_status_color": get_service_status_color("bitcoind"),
-        "lnd_status_log": lnd_status_log,
+        "is_bitcoin_synced": is_bitcoin_synced(),
+        #"bitcoin_status_log": bitcoin_status_log,
+        "bitcoin_status": get_service_status_basic_text("bitcoin"),
+        "bitcoin_status_color": get_service_status_color("bitcoin"),
+        #"lnd_status_log": lnd_status_log,
         "lnd_status": get_service_status_basic_text("lnd"),
         "lnd_status_color": get_service_status_color("lnd"),
-        "loopd_status_log": loopd_status_log,
-        "loopd_status": get_service_status_basic_text("loopd"),
-        "loopd_status_color": get_service_status_color("loopd"),
-        "tor_status_log": tor_status_log,
+        #"loop_status_log": loop_status_log,
+        "loop_status": get_service_status_basic_text("loop"),
+        "loop_status_color": get_service_status_color("loop"),
+        #"pool_status_log": pool_status_log,
+        "pool_status": get_service_status_basic_text("pool"),
+        "pool_status_color": get_service_status_color("pool"),
+        #"lit_status_log": get_journalctl_log("lit"),
+        "lit_status": get_service_status_basic_text("lit"),
+        "lit_status_color": get_service_status_color("lit"),
+        #"tor_status_log": tor_status_log,
         "tor_status": get_service_status_basic_text("tor@default"),
         "tor_status_color": get_service_status_color("tor@default"),
-        "lndhub_status_log": lndhub_status_log,
+        #"lndhub_status_log": lndhub_status_log,
         "lndhub_status": get_service_status_basic_text("lndhub"),
         "lndhub_status_color": get_service_status_color("lndhub"),
-        "netdata_status_log": netdata_status_log,
+        #"netdata_status_log": netdata_status_log,
         "netdata_status": get_service_status_basic_text("netdata"),
         "netdata_status_color": get_service_status_color("netdata"),
-        "electrs_status_log": electrs_status_log,
+        #"electrs_status_log": electrs_status_log,
         "electrs_status": get_service_status_basic_text("electrs"),
         "electrs_status_color": get_service_status_color("electrs"),
-        "rtl_status_log": rtl_status_log,
+        #"rtl_status_log": rtl_status_log,
         "rtl_status": get_service_status_basic_text("rtl"),
         "rtl_status_color": get_service_status_color("rtl"),
-        "lnbits_status_log": lnbits_status_log,
+        #"lnbits_status_log": lnbits_status_log,
         "lnbits_status": get_service_status_basic_text("lnbits"),
         "lnbits_status_color": get_service_status_color("lnbits"),
-        "thunderhub_status_log": thunderhub_status_log,
+        #"thunderhub_status_log": thunderhub_status_log,
         "thunderhub_status": get_service_status_basic_text("thunderhub"),
         "thunderhub_status_color": get_service_status_color("thunderhub"),
-        "docker_status_log": docker_status_log,
+        #"ckbunker_status_log": ckbunker_status_log,
+        "ckbunker_status": get_service_status_basic_text("ckbunker"),
+        "ckbunker_status_color": get_service_status_color("ckbunker"),
+        #"sphinxrelay_status_log": sphinxrelay_status_log,
+        "sphinxrelay_status": get_service_status_basic_text("sphinxrelay"),
+        "sphinxrelay_status_color": get_service_status_color("sphinxrelay"),
+        #"docker_status_log": docker_status_log,
         "docker_status": get_service_status_basic_text("docker"),
         "docker_status_color": get_service_status_color("docker"),
-        "docker_image_build_status_log": docker_image_build_status_log,
+        #"docker_image_build_status_log": docker_image_build_status_log,
         "docker_image_build_status": get_docker_image_build_status(),
         "docker_image_build_status_color": get_docker_image_build_status_color(),
-        "dojo_status_log": get_journalctl_log("dojo"),
+        #"whirlpool_status_log": get_journalctl_log("whirlpool"),
+        "whirlpool_status": get_service_status_basic_text("whirlpool"),
+        "whirlpool_status_color": get_service_status_color("whirlpool"),
+        #"dojo_status_log": get_journalctl_log("dojo"),
         "dojo_status": get_service_status_basic_text("dojo"),
         "dojo_status_color": get_service_status_color("dojo"),
-        "btcpayserver_status_log": get_journalctl_log("btcpayserver"),
+        #"btcpayserver_status_log": get_journalctl_log("btcpayserver"),
         "btcpayserver_status": get_service_status_basic_text("btcpayserver"),
         "btcpayserver_status_color": get_service_status_color("btcpayserver"),
-        "mempoolspace_status_log": get_journalctl_log("mempoolspace"),
-        "mempoolspace_status": get_service_status_basic_text("mempoolspace"),
-        "mempoolspace_status_color": get_service_status_color("mempoolspace"),
-        "caravan_status_log": get_journalctl_log("caravan"),
+        #"mempool_status_log": get_journalctl_log("mempool"),
+        "mempool_status": get_service_status_basic_text("mempool"),
+        "mempool_status_color": get_service_status_color("mempool"),
+        #"caravan_status_log": get_journalctl_log("caravan"),
         "caravan_status": get_service_status_basic_text("caravan"),
         "caravan_status_color": get_service_status_color("caravan"),
-        "nginx_status_log": get_journalctl_log("nginx"),
+        #"specter_status_log": get_journalctl_log("specter"),
+        "specter_status": get_service_status_basic_text("specter"),
+        "specter_status_color": get_service_status_color("specter"),
+        #"nginx_status_log": get_journalctl_log("nginx"),
         "nginx_status": get_service_status_basic_text("nginx"),
         "nginx_status_color": get_service_status_color("nginx"),
-        "firewall_status_log": get_journalctl_log("ufw"),
-        "firewall_status": get_service_status_basic_text("ufw"),
-        "firewall_status_color": get_service_status_color("ufw"),
+        #"ufw_status_log": get_journalctl_log("ufw"),
+        "ufw_status": get_service_status_basic_text("ufw"),
+        "ufw_status_color": get_service_status_color("ufw"),
         "firewall_rules": get_firewall_rules(),
         "is_quicksync_disabled": not quicksync_enabled,
-        "is_netdata_enabled": is_netdata_enabled(),
+        "netdata_enabled": is_service_enabled("netdata"),
         "uptime": uptime,
         "date": date,
         "local_ip": local_ip,
+        "throttled_data": get_throttled_data(),
+        "oom_error": has_oom_error(),
+        "oom_info": get_oom_error_info(),
         "drive_usage": get_drive_usage(),
         "cpu_usage": get_cpu_usage(),
         "ram_usage": get_ram_usage(),
         "device_temp": get_device_temp(),
         "ui_settings": read_ui_settings()
     }
+    t2 = get_system_time_in_ms()
+    templateData["load_time"] = t2-t1
     return render_template('status.html', **templateData)
 
 @mynode_settings.route("/settings/upgrade")
@@ -292,6 +295,7 @@ def upgrade_page():
         "title": "myNode Upgrade",
         "header_text": "Upgrading",
         "subheader_text": "This may take a while...",
+        "show_upgrade_log": True,
         "ui_settings": read_ui_settings()
     }
     return render_template('reboot.html', **templateData)
@@ -311,6 +315,31 @@ def upgrade_beta_page():
         "title": "myNode Upgrade",
         "header_text": "Upgrading",
         "subheader_text": "This may take a while...",
+        "show_upgrade_log": True,
+        "ui_settings": read_ui_settings()
+    }
+    return render_template('reboot.html', **templateData)
+
+@mynode_settings.route("/settings/get-upgrade-log-raw")
+def get_upgrade_log_page():
+    check_logged_in()
+
+    log = get_file_contents("/home/admin/upgrade_logs/upgrade_log_latest.txt")
+    if (log == "ERROR"):
+        log = "No log file found"
+    
+    return log
+
+@mynode_settings.route("/settings/upgrade-test")
+def upgrade_page_test():
+    check_logged_in()
+
+    # Display wait page
+    templateData = {
+        "title": "myNode Upgrade",
+        "header_text": "Upgrading",
+        "subheader_text": "This may take a while...",
+        "show_upgrade_log": True,
         "ui_settings": read_ui_settings()
     }
     return render_template('reboot.html', **templateData)
@@ -380,6 +409,25 @@ def reboot_device_page():
     }
     return render_template('reboot.html', **templateData)
 
+@mynode_settings.route("/settings/reboot-device-no-format")
+def reboot_device_no_format_page():
+    check_logged_in()
+
+    os.system("rm -f /home/bitcoin/.mynode/force_format_prompt")
+
+    # Trigger reboot
+    t = Timer(1.0, reboot_device)
+    t.start()
+
+    # Wait until device is restarted
+    templateData = {
+        "title": "myNode Reboot",
+        "header_text": "Restarting",
+        "subheader_text": "This will take several minutes...",
+        "ui_settings": read_ui_settings()
+    }
+    return render_template('reboot.html', **templateData)
+
 @mynode_settings.route("/settings/shutdown-device")
 def shutdown_device_page():
     check_logged_in()
@@ -400,7 +448,7 @@ def shutdown_device_page():
 def reindex_blockchain_page():
     check_logged_in()
     os.system("echo 'BTCARGS=-reindex-chainstate' > "+BITCOIN_ENV_FILE)
-    os.system("systemctl restart bitcoind")
+    os.system("systemctl restart bitcoin")
     t = Timer(30.0, reset_bitcoin_env_file)
     t.start()
     return redirect("/settings")
@@ -409,7 +457,7 @@ def reindex_blockchain_page():
 def rescan_blockchain_page():
     check_logged_in()
     os.system("echo 'BTCARGS=-rescan' > "+BITCOIN_ENV_FILE)
-    os.system("systemctl restart bitcoind")
+    os.system("systemctl restart bitcoin")
     t = Timer(30.0, reset_bitcoin_env_file)
     t.start()
     return redirect("/settings")
@@ -432,6 +480,27 @@ def reset_docker_page():
     }
     return render_template('reboot.html', **templateData)
 
+@mynode_settings.route("/settings/open-clone-tool")
+def open_clone_tool_page():
+    check_logged_in()
+
+    check_and_mark_reboot_action("open_clone_tool")
+
+    os.system("touch /home/bitcoin/open_clone_tool")
+    os.system("sync")
+
+    # Trigger reboot
+    t = Timer(1.0, reboot_device)
+    t.start()
+
+    # Display wait page
+    templateData = {
+        "title": "myNode Reboot",
+        "header_text": "Restarting",
+        "subheader_text": "Restarting to Open Clone Tool....",
+        "ui_settings": read_ui_settings()
+    }
+    return render_template('reboot.html', **templateData)
 
 @mynode_settings.route("/settings/reset-electrs")
 def reset_electrs_page():
@@ -458,6 +527,33 @@ def reset_firewall_page():
     t.start()
     flash("Firewall Reset", category="message")
     return redirect("/settings")
+
+@mynode_settings.route("/settings/remount-external-drive")
+def remount_external_drive_page():
+    os.system("mount -o remount,rw /mnt/hdd")
+    flash("Remounted External Drive", category="message")
+    return redirect("/settings")
+
+@mynode_settings.route("/settings/format-external-drive", methods=['POST'])
+def format_external_drive_page():
+    check_logged_in()
+    p = pam.pam()
+    pw = request.form.get('password_format_external_drive')
+    if pw == None or p.authenticate("admin", pw) == False:
+        flash("Invalid Password", category="error")
+        return redirect(url_for(".page_settings"))
+    else:
+        check_and_mark_reboot_action("format_external_drive")
+
+        os.system("touch /home/bitcoin/.mynode/force_format_prompt")
+
+        templateData = {
+            "title": "myNode",
+            "header_text": "Rebooting",
+            "subheader_text": "This will take several minutes...",
+            "ui_settings": read_ui_settings()
+        }
+        return render_template('reboot.html', **templateData)
 
 @mynode_settings.route("/settings/factory-reset", methods=['POST'])
 def factory_reset_page():
@@ -524,6 +620,29 @@ def change_quicksync_rates_page():
     os.system("systemctl restart bandwidth")
 
     flash("QuickSync Rates Updated!", category="message")
+    return redirect(url_for(".page_settings"))
+
+
+@mynode_settings.route("/settings/logout_time", methods=['POST'])
+def change_logout_time_page():
+    check_logged_in()
+    if not request:
+        return redirect("/settings")
+
+    d = request.form.get('logout_days')
+    h = request.form.get('logout_hours')
+
+    if d == "0" and h == "0":
+        flash("Logout time cannot be 0 hours and 0 days", category="error")
+        return redirect(url_for(".page_settings"))
+
+    set_flask_session_timeout(d, h)
+    
+    # Trigger reboot
+    t = Timer(3.0, restart_flask)
+    t.start()
+
+    flash("Automatic logout time updated!", category="message")
     return redirect(url_for(".page_settings"))
 
 
@@ -646,13 +765,11 @@ def download_logs_page():
 def regen_https_certs_page():
     check_logged_in()
 
-    # Touch files to trigger re-checking drive
-    os.system("rm -rf /home/bitcoin/.mynode/https")
-    os.system("rm -rf /mnt/hdd/mynode/settings/https")
-    os.system("sync")
-    os.system("systemctl restart https")
+    # Re-install app
+    t = Timer(1.0, regen_https_cert)
+    t.start()
     
-    flash("HTTPS Service Restarted", category="message")
+    flash("HTTPS Service Restarting", category="message")
     return redirect(url_for(".page_settings"))
 
 @mynode_settings.route("/settings/regen-electrs-certs")
@@ -674,7 +791,16 @@ def reinstall_app_page():
 
     check_and_mark_reboot_action("reinstall_app")
 
-    app = request.args.get('app')
+    # Check application specified
+    if not request.args.get("app"):
+        flash("No application specified", category="error")
+        return redirect("/settings")
+    
+    # Check application name is valid
+    app = request.args.get("app")
+    if not is_application_valid(app):
+        flash("Application is invalid", category="error")
+        return redirect("/settings")
 
     # Re-install app
     t = Timer(1.0, reinstall_app, [app])
@@ -685,9 +811,31 @@ def reinstall_app_page():
         "title": "myNode Install",
         "header_text": "Installing",
         "subheader_text": "This may take a while...",
+        "show_upgrade_log": True,
         "ui_settings": read_ui_settings()
     }
     return render_template('reboot.html', **templateData)
+
+@mynode_settings.route("/settings/uninstall-app")
+def uninstall_app_page():
+    check_logged_in()
+
+    # Check application specified
+    if not request.args.get("app"):
+        flash("No application specified", category="error")
+        return redirect("/apps")
+    
+    # Check application name is valid
+    app = request.args.get("app")
+    if not is_application_valid(app):
+        flash("Application is invalid", category="error")
+        return redirect("/apps")
+
+    # Un-install app
+    uninstall_app(app)
+
+    flash("Application Uninstalled", category="message")
+    return redirect("/apps")
 
 @mynode_settings.route("/settings/toggle-uploader")
 def toggle_uploader_page():
@@ -737,6 +885,28 @@ def toggle_quicksync_page():
     }
     return render_template('reboot.html', **templateData)
 
+@mynode_settings.route("/settings/toggle-testnet")
+def toggle_testnet_page():
+    check_logged_in()
+
+    check_and_mark_reboot_action("toggle_testnet")
+
+    # Toggle testnet
+    toggle_testnet()
+
+    # Trigger reboot
+    t = Timer(1.0, reboot_device)
+    t.start()
+
+    # Wait until device is restarted
+    templateData = {
+        "title": "myNode Reboot",
+        "header_text": "Restarting",
+        "subheader_text": "This will take several minutes...",
+        "ui_settings": read_ui_settings()
+    }
+    return render_template('reboot.html', **templateData)
+
 @mynode_settings.route("/settings/ping")
 def ping_page():
     return "alive"
@@ -744,21 +914,47 @@ def ping_page():
 @mynode_settings.route("/settings/toggle-darkmode")
 def toggle_darkmode_page():
     check_logged_in()
+    toggle_darkmode()
+    return redirect("/settings")
 
-    if is_darkmode_enabled():
-        disable_darkmode()
-    else:
-        enable_darkmode()
+@mynode_settings.route("/settings/toggle-darkmode-home")
+def toggle_darkmode_page_home():
+    check_logged_in()
+    toggle_darkmode()
+    return redirect("/")
+
+@mynode_settings.route("/settings/set-background", methods=['POST'])
+def set_background_page():
+    check_logged_in()
+
+    if not request.form.get('background'):
+        flash("No background specified", category="error")
+        return redirect("/settings")
+
+    bg = request.form.get('background')
+    set_background(bg)
+
     return redirect("/settings")
 
 @mynode_settings.route("/settings/toggle-netdata")
 def toggle_netdata_page():
     check_logged_in()
 
-    if is_netdata_enabled():
-        disable_netdata()
+    if is_service_enabled("netdata"):
+        disable_service("netdata")
     else:
-        enable_netdata()
+        enable_service("netdata")
+    return redirect("/settings")
+
+@mynode_settings.route("/settings/toggle-check-external-drive")
+def toggle_check_external_drive_page():
+    check_logged_in()
+
+    if skip_fsck():
+        set_skip_fsck(False)
+    else:
+        set_skip_fsck(True)
+    flash("Check External Drive Updated", category="message")
     return redirect("/settings")
 
 @mynode_settings.route("/settings/modify-swap")
@@ -782,3 +978,10 @@ def modify_swap_page():
         "ui_settings": read_ui_settings()
     }
     return render_template('reboot.html', **templateData)
+
+@mynode_settings.route("/settings/clear-oom-error")
+def page_clear_oom_error():
+    check_logged_in()
+    clear_oom_error()
+    flash("Warning Cleared", category="message")
+    return redirect("/settings")

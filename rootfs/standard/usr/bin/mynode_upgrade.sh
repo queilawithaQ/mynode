@@ -59,12 +59,17 @@ sleep 1
 sync
 sleep 1
 
-# Run post upgrade script
 VERSION=$(cat /usr/share/mynode/version)
+
+# Clear old upgrade logs
+rm -f /home/admin/upgrade_logs/upgrade_log_${VERSION}_post_*
+rm -f /home/admin/upgrade_logs/upgrade_log_latest_post_*
+
+# Run post upgrade script
 touch $UPGRADE_ERROR_FILE
 for i in {1..5}
 do
-    /bin/bash /usr/bin/mynode_post_upgrade.sh > /home/admin/upgrade_logs/upgrade_log_${VERSION}_post_${i}.txt 2>&1
+    /bin/bash /usr/bin/mynode_post_upgrade.sh 2>&1 | tee /home/admin/upgrade_logs/upgrade_log_${VERSION}_post_${i}.txt /home/admin/upgrade_logs/upgrade_log_latest_post_${i}.txt 
     RC=$?
     if [ "${RC}" -eq "0" ]; then
         rm -f $UPGRADE_ERROR_FILE

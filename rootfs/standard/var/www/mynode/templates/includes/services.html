@@ -1,72 +1,291 @@
+<div class="main_header">Core Services</div>
 <div class="app_tile_row">
-    <div>
-        <div class="main_header">Core Services</div>
-        <div class="app_tile_row_section">
-            <div class="app_tile">
-                <div class="app_status_icon {{ bitcoind_status_color }}"></div>
-                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/bitcoin.png")}}"/></div>
-                <div class="app_title">Bitcoin</div>
-                <div class="app_status">{{ bitcoind_status }}</div>
-                <div class="app_contents">
-                    <a class="ui-button ui-widget ui-corner-all mynode_button" href="/bitcoind">Manage</a>
-                </div>
+    <div class="app_tile_wide">
+        <div style="width: 130px; float: left;">
+            <div class="app_status_icon {{ bitcoin_status_color }}" id="bitcoin_status_icon"></div>
+            <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/bitcoin.png")}}"/></div>
+            <div class="app_title">Bitcoin</div>
+            <div class="app_status" id="bitcoin_status">{{ bitcoin_status }}</div>
+            {% if is_testnet_enabled %}
+                <div class="app_status" style="color: green; margin-top: 3px;">Testnet</div>
+            {% endif %}
+            <div class="app_contents">
+                <a class="ui-button ui-widget ui-corner-all mynode_button" href="/bitcoin">Manage</a>
             </div>
-            <div class="app_tile">
-                <div class="app_status_icon {{ lnd_status_color }}"></div>
-                <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/lightning.png")}}"/></div>
-                <div class="app_title">Lightning</div>
-                <div class="app_status">{{ lnd_status }}</div>
-                <div class="app_contents">
-                    <a class="ui-button ui-widget ui-corner-all mynode_button" href="/lnd">Manage</a>
+        </div>
+        <div style="width: 230px; padding-left: 10px; float: right;">
+            <table style="font-size: 10px; width: 100%;" cellpadding="0" cellspacing="0">
+                <tr>
+                    <td class="service_table_td_left_header">Height</td>
+                    <td id="current_block">{{ current_block }}</td>
+                </tr>
+                <tr>
+                    <td class="service_table_td_left_header">Peers</td>
+                    <td id="bitcoin_peer_count">{{ bitcoin_peer_count }}</td>
+                </tr>
+                <tr>
+                    <td class="service_table_td_left_header">Difficulty</td>
+                    <td id="bitcoin_difficulty">{{ bitcoin_difficulty }}</td>
+                </tr>
+                <tr>
+                    <td class="service_table_td_left_header">Mempool Size</td>
+                    <td id="bitcoin_mempool_size">{{ bitcoin_mempool_size }}</td>
+                </tr>
+                <tr>
+                    <td class="service_table_td_left_header">Version</td>
+                    <td id="bitcoin_version">{{ bitcoin_version }}</td>
+                </tr>
+            </table>
+            <br/>
+            <img class="" id="show_bitcoin_blocks" style="margin: auto; width: 60px; cursor: pointer;" onclick="toggleBlocks();" src="{{ url_for('static', filename="images/expand_down.png")}}"/>
+        </div>
+    </div>
+    <div class="app_tile_wide">
+        <div style="width: 130px; float: left;">
+            <div class="app_status_icon {{ lnd_status_color }}" id="lnd_status_icon"></div>
+            <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/lightning.png")}}"/></div>
+            <div class="app_title">Lightning</div>
+            <div class="app_status" id="lnd_status">{{ lnd_status }}</div>
+            {% if is_testnet_enabled %}
+                <div class="app_status" style="color: green; margin-top: 3px;">Testnet</div>
+            {% endif %}
+            <div class="app_contents">
+                {% if lnd_ready %}
+                <a style="width: 37px;" class="ui-button ui-widget ui-corner-all mynode_button" id="lit" href="#" title="Open Lightning Terminal">
+                    <img style="width: 16px;" src="{{ url_for('static', filename="images/lit.png")}}"/>
+                </a>
+                <a style="width: 37px;" class="ui-button ui-widget ui-corner-all mynode_button" href="#" id="pair_wallet" title="Pair Wallet">
+                    <img style="width: 16px;" src="{{ url_for('static', filename="images/qr_code.png")}}"/>
+                </a>
+                {% endif %}
+                {% if lnd_wallet_exists %}
+                    <a class="ui-button ui-widget ui-corner-all mynode_button" href="/lnd">Wallet</a>
+                {% else %}
+                    <a class="ui-button ui-widget ui-corner-all mynode_button" href="/lnd">Create Wallet</a>
+                {% endif %}
+            </div>
+        </div>
+        <div style="width: 230px; padding-left: 10px; float: right;">
+            <table style="font-size: 10px; width: 100%;" cellpadding="0" cellspacing="0">
+                {% if lnd_ready %}
+                <tr>
+                    <td class="service_table_td_left_header">On-chain Balance</td>
+                    <td id="lnd_wallet_balance">{{ lnd_balance_info['wallet_balance'] }}</td>
+                </tr>
+                <tr>
+                    <td class="service_table_td_left_header">Lightning Balance</td>
+                    <td id="lnd_channel_balance">{{ lnd_balance_info['channel_balance'] }}</td>
+                </tr>
+                {% endif %}
+                <tr>
+                    <td class="service_table_td_left_header">Peers</td>
+                    <td id="lnd_peer_count">{{ lnd_peer_count }}</td>
+                </tr>
+                <tr>
+                    <td class="service_table_td_left_header">Channels</td>
+                    <td id="lnd_channel_count">{{ lnd_channel_count }}</td>
+                </tr>
+                <tr>
+                    <td class="service_table_td_left_header">Version</td>
+                    <td>{{ lnd_version }}</td>
+                </tr>
+            </table>
+            <br/>
+            
+            {% if lnd_wallet_exists and lnd_ready %}
+            <img class="" id="show_lightning_details" style="margin: auto; width: 60px; cursor: pointer;" onclick="toggleLightningDetails();" src="{{ url_for('static', filename="images/")}}{% if ui_settings['pinned_lightning_details'] %}expand_up.png{% else %}expand_down.png{% endif %}"/>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Show Bitcoin Blocks -->
+<div class="app_tile_row">
+    <div class="app_tile_bitcoin_recent_blocks" id="bitcoin_blocks" style="display: none;">
+        <div class="bitcoin_block_set"></div>
+            <div class="bitcoin_block">
+                <div class="bitcoin_block_orange_square">
+                    <div class="bitcoin_block_size" id="bitcoin_block_size_0">0.00 MB</div>
+                    <div class="bitcoin_block_num_txs" id="bitcoin_block_num_txs_0">0 TXs</div>
+                    <div class="bitcoin_block_time" id="bitcoin_block_time_0">999 min ago</div>
                 </div>
+                <div class="bitcoin_block_height" id="bitcoin_block_height_0">???</div>
+            </div>
+            <div class="bitcoin_block">
+                <div class="bitcoin_block_orange_square">
+                    <div class="bitcoin_block_size" id="bitcoin_block_size_1">0.00 MB</div>
+                    <div class="bitcoin_block_num_txs" id="bitcoin_block_num_txs_1">0 TXs</div>
+                    <div class="bitcoin_block_time" id="bitcoin_block_time_1">999 min ago</div>
+                </div>
+                <div class="bitcoin_block_height" id="bitcoin_block_height_1">???</div>
+            </div>
+            <div class="bitcoin_block">
+                <div class="bitcoin_block_orange_square">
+                    <div class="bitcoin_block_size" id="bitcoin_block_size_2">0.00 MB</div>
+                    <div class="bitcoin_block_num_txs" id="bitcoin_block_num_txs_2">0 TXs</div>
+                    <div class="bitcoin_block_time" id="bitcoin_block_time_2">999 min ago</div>
+                </div>
+                <div class="bitcoin_block_height" id="bitcoin_block_height_2">???</div>
+            </div>
+            <div class="bitcoin_block">
+                <div class="bitcoin_block_orange_square">
+                    <div class="bitcoin_block_size" id="bitcoin_block_size_3">0.00 MB</div>
+                    <div class="bitcoin_block_num_txs" id="bitcoin_block_num_txs_3">0 TXs</div>
+                    <div class="bitcoin_block_time" id="bitcoin_block_time_3">999 min ago</div>
+                </div>
+                <div class="bitcoin_block_height" id="bitcoin_block_height_3">???</div>
+            </div>
+            <div class="bitcoin_block">
+                <div class="bitcoin_block_orange_square">
+                    <div class="bitcoin_block_size" id="bitcoin_block_size_4">0.00 MB</div>
+                    <div class="bitcoin_block_num_txs" id="bitcoin_block_num_txs_4">0 TXs</div>
+                    <div class="bitcoin_block_time" id="bitcoin_block_time_4">999 min ago</div>
+                </div>
+                <div class="bitcoin_block_height" id="bitcoin_block_height_4">???</div>
+            </div>
+            <div class="bitcoin_block">
+                <div class="bitcoin_block_orange_square">
+                    <div class="bitcoin_block_size" id="bitcoin_block_size_5">0.00 MB</div>
+                    <div class="bitcoin_block_num_txs" id="bitcoin_block_num_txs_5">0 TXs</div>
+                    <div class="bitcoin_block_time" id="bitcoin_block_time_5">999 min ago</div>
+                </div>
+                <div class="bitcoin_block_height" id="bitcoin_block_height_5">???</div>
+            </div>
+            <div class="bitcoin_block">
+                <div class="bitcoin_block_orange_square">
+                    <div class="bitcoin_block_size" id="bitcoin_block_size_6">0.00 MB</div>
+                    <div class="bitcoin_block_num_txs" id="bitcoin_block_num_txs_6">0 TXs</div>
+                    <div class="bitcoin_block_time" id="bitcoin_block_time_6">999 min ago</div>
+                </div>
+                <div class="bitcoin_block_height" id="bitcoin_block_height_6">???</div>
             </div>
         </div>
     </div>
-    <div>
-        <div class="main_header">Services</div>
-            <div class="app_tile_row_section">
-                <div class="app_tile">
-                    <div class="app_status_icon {{ electrs_status_color }}"></div>
-                    <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/electrum_logo.png")}}"/></div>
-                    <div class="app_title">Electrum Server</div>
-                    <div class="app_status">{{ electrs_status }}</div>
-                    <div class="app_contents">
-                        {% if electrs_enabled %}
-                        <a class="ui-button ui-widget ui-corner-all mynode_button" href="/electrum-server">Info</a>
+</div>
+
+<!-- Show Lightning Details -->
+<div class="app_tile_row">
+    <div class="app_tile_lightning_details" id="lightning_details" style="display: none;">
+
+        <!-- Top Wallet Section -->
+        <p style="font-size: 16px; font-weight: bold;">Wallet</p>
+
+        {% if ui_settings['pinned_lightning_details'] %}
+            <img class="lightning_pin_details_icon" id="pin_lightning_details_icon" onclick="togglePinnedLightningDetails();" src="{{ url_for('static', filename="images/unpin.png")}}" title="Toggle Pinning Lightning Details"/>
+        {% else %}
+            <img class="lightning_pin_details_icon" id="pin_lightning_details_icon" onclick="togglePinnedLightningDetails();" src="{{ url_for('static', filename="images/pin.png")}}" title="Toggle Pinning Lightning Details"/>
+        {% endif %}
+
+        <div style="display: flex; margin: auto;">
+
+            <div>
+                <b>Balance</b><br/>
+                <span id="lnd_total_balance" style="font-size: 12px; margin-top: 5px;">{{lnd_balance_info['total_balance']}} sats</span>
+
+                <br/><br/>
+                <b>Deposit</b><br/>
+                <img style='width: 160px; height: 160px; margin: auto; margin-top: 5px; margin-bottom: 5px;' src='/api/get_qr_code_image?url={{ lnd_deposit_address }}' title="{{ lnd_deposit_address }}"/>
+                <br/>
+                <span style="font-size: 10px;">{{lnd_deposit_address}}</span>
+            </div>
+            
+            <div>
+                <b>On-chain Transactions</b>
+                <table id="lnd_transactions" style="font-size: 12px; width: 270px; margin: 10px;">
+                    <tr>
+                        <td>Date</td>
+                        <td>Amount</td>
+                        <td></td>
+                    </tr>
+                    <!-- ONLY UPDATE VIA JS??
+                    {% if lnd_transactions and lnd_transactions|length > 0 %}
+                        {% for tx in lnd_transactions[:lnd_tx_display_limit] %}
+                            <tr>
+                                <td>{{ tx.date_str }}</td>
+                                <td>{{ tx.amount_str }}</td>
+                                <td>
+                                    {% if tx.num_confirmations < 1 %}
+                                        <img style="width: 16px;" src="{{ url_for('static', filename="images/")}}confirm_pending.png" title="pending transaction"/>
+                                    {% elif tx.num_confirmations <= 3 %}
+                                        <img style="width: 16px;" src="{{ url_for('static', filename="images/")}}confirm_bars_{{tx.num_confirmations}}.png" title="{{ tx.num_confirmations }} confirmations"/>
+                                    {% else %}
+                                        <img style="width: 16px;" src="{{ url_for('static', filename="images/")}}confirm_complete.png" title="{{ tx.num_confirmations }} confirmations"/>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        {% if lnd_transactions|length >= lnd_tx_display_limit %}
+                            <tr><td colspan=9>more...</td></tr>
                         {% endif %}
-                        <a class="ui-button ui-widget ui-corner-all mynode_button" href="#" id="toggle-electrs">{% if electrs_enabled %}Disable{% else %}Enable{% endif %}</a>
-                    </div>
-                </div>
-                <div class="app_tile">
-                    <div class="app_status_icon {{ tor_status_color }}"></div>
-                    <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/tor.png")}}"/></div>
-                    <div class="app_title">Tor</div>
-                    <div class="app_status">Private Connections</div>
-                    <div class="app_contents">
-                        {% if product_key_skipped %}
-                            Remote Access Premium Feature
-                        {% else %}
-                            <a class="ui-button ui-widget ui-corner-all mynode_button" href="/tor">Tor Services</a>
+                    {% else %}
+                        <tr><td colspan=9 style="text-align: center;"><br/><br/>None yet!</td></tr>
+                    {% endif %}
+                    -->
+                </table>
+            </div> 
+
+            
+            <div>
+                <b>Lightning Transactions</b>
+                <table id="lnd_payments_and_invoices" style="font-size: 12px; width: 270px; margin: 10px;">
+                    <tr>
+                        <td>Date</td>
+                        <td>Amount</td>
+                        <td></td>
+                    </tr>
+                    <!-- ONLY UPDATE VIA JS??
+                    {% if lnd_payments_and_invoices and lnd_payments_and_invoices|length > 0 %}
+                        {% for tx in lnd_payments_and_invoices[:lnd_tx_display_limit] %}
+                            <tr>
+                                <td>{{ tx.date_str }}</td>
+                                <td>{{ tx.value_str }}</td>
+                                <td>
+                                    {% if tx.type == "PAYMENT" %}
+                                        <img style="width: 16px;" src="{{ url_for('static', filename="images/ln_send.png")}}"/>
+                                    {% else %}
+                                        <img style="width: 16px;" src="{{ url_for('static', filename="images/ln_recv.png")}}"/>
+                                    {% endif %}
+
+                                    {% if tx.state == "OPEN" %}
+                                        <img style="width: 16px;" src="{{ url_for('static', filename="images/")}}invoice_pending.png" title="open invoice"/>
+                                    {% elif tx.state == "SETTLED" %}
+                                        <img style="width: 16px;" src="{{ url_for('static', filename="images/")}}invoice_complete.png" title="settled invoice"/>
+                                    {% elif tx.state == "CANCELED" or tx.state == "CANCELLED" %}
+                                        <img style="width: 16px;" src="{{ url_for('static', filename="images/")}}invoice_cancelled.png" title="cancelled invoice"/>
+                                    {% endif %}
+
+                                    {% if tx.memo != None and tx.memo != "" %}
+                                        <img style="width: 16px;" src="{{ url_for('static', filename="images/memo.png")}}" title="{{ tx.memo }}"/>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                        {% if lnd_payments_and_invoices|length >= lnd_tx_display_limit %}
+                            <tr><td colspan=9>more...</td></tr>
                         {% endif %}
-                    </div>
-                </div>
-                <div class="app_tile">
-                    <div class="app_status_icon {{ vpn_status_color }}"></div>
-                    <div class="app_logo"><img class="app_logo_icon" src="{{ url_for('static', filename="images/vpn.png")}}"/></div>
-                    <div class="app_title">VPN</div>
-                    <div class="app_status">{{ vpn_status }}</div>
-                    <div class="app_contents">
-                        {% if product_key_skipped %}
-                            Premium Feature
-                        {% else %}
-                            {% if vpn_enabled %}
-                            <a class="ui-button ui-widget ui-corner-all mynode_button" href="/vpn-info">Info</a>
-                            {% endif %}
-                            <a class="ui-button ui-widget ui-corner-all mynode_button" href="#" id="toggle-vpn">{% if vpn_enabled %}Disable{% else %}Enable{% endif %}</a>
-                        {% endif %}
-                    </div>
-                </div>
+                    {% else %}
+                        <tr><td colspan=9 style="text-align: center;"><br/><br/>None yet!</td></tr>
+                    {% endif %}
+                    -->
+                </table>
             </div>
         </div>
+
+        <!-- Channels -->
+        {% if lnd_channels|length > 0 %}
+            <br/><br/>
+            <b>Channels</b><br/>
+            {% for c in lnd_channels %}
+                <div class="lightning_channel">
+                    <div style="text-align: left; font-weight: bold; margin-bottom: 5px;">
+                        <span id="channel_status_icon_{{ c.chan_id }}" class="lightning_channel_status_icon {{ c.status_color }}"></span>
+                        {{ c.remote_alias }}
+                    </div>
+                    <div id="channel_bar_{{ c.chan_id }}" class="lightning_channel_bar"></div>
+                    <div id="channel_local_{{ c.chan_id }}" class="lightning_channel_bar_label_left">{{c.local_balance}} sats</div>
+                    <div id="channel_remote_{{ c.chan_id }}" class="lightning_channel_bar_label_right">{{c.remote_balance}} sats</div>
+                </div>
+            {% endfor %}
+        {% endif %}
     </div>
 </div>

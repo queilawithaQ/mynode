@@ -8,30 +8,31 @@ touch /tmp/shutting_down
 
 
 # Stop additional services
-systemctl stop glances
-systemctl stop lndhub
-systemctl stop netdata
-systemctl stop rtl
-systemctl stop webssh2
-systemctl stop whirlpool
-systemctl stop dojo
-systemctl stop btcpayserver
-systemctl stop btc_rpc_explorer
-systemctl stop specter
-systemctl stop caravan
-systemctl stop lnbits
-systemctl stop thunderhub
+date
+systemctl stop glances lndhub netdata rtl webssh2 whirlpool dojo
+date
+systemctl stop btcpayserver btcrpcexplorer specter caravan lnbits
+date
+systemctl stop thunderhub mempool
+date
 
 
 # Manually stop services (backup)
-/opt/mynode/dojo/docker/my-dojo/dojo.sh stop || true
+if [ "$(systemctl is-active docker)" = "active" ]; then
+    /mnt/hdd/mynode/dojo/docker/my-dojo/dojo.sh stop || true
+fi
 
 
 # Stop core services
-systemctl stop electrs
-systemctl stop loopd
-systemctl stop lnd
-systemctl stop quicksync
-systemctl stop bitcoind
+date
+systemctl stop electrs loop pool lnd quicksync
+date
+killall bitcoind || true
+systemctl stop bitcoin
+date
 
+
+# Sync filesystem
 sync
+
+echo "Done stopping services."

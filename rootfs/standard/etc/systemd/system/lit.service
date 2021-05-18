@@ -1,0 +1,31 @@
+# lit service
+# /etc/systemd/system/lit.service
+
+[Unit]
+Description=Lightning Terminal
+Wants=bitcoin.service lnd.service
+After=bitcoin.service lnd.service
+
+[Service]
+ExecStartPre=/usr/bin/is_not_shutting_down.sh
+ExecStartPre=/usr/bin/wait_on_bitcoin.sh
+ExecStartPre=/usr/bin/wait_on_lnd.sh
+ExecStart=/usr/local/bin/litd --lit-dir=/mnt/hdd/mynode/lit
+
+User=bitcoin
+Group=bitcoin
+Type=simple
+KillMode=process
+LimitNOFILE=128000
+TimeoutSec=240
+Nice=-1
+IOAccounting=true
+IOWeight=400
+Restart=always
+RestartSec=30
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=lit
+
+[Install]
+WantedBy=multi-user.target  

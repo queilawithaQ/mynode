@@ -2,10 +2,15 @@
 from config import *
 from flask import Flask, render_template, Markup, send_from_directory, redirect, request, url_for
 from user_management import *
-from bitcoind import mynode_bitcoind
-from whirlpool import mynode_whirlpool, get_whirlpool_status
-from dojo import mynode_dojo, get_dojo_status
+from api import mynode_api
+from bitcoin import mynode_bitcoin
+from whirlpool import mynode_whirlpool
+from dojo import mynode_dojo
+from joininbox import mynode_joininbox
 from caravan import mynode_caravan
+from sphinxrelay import mynode_sphinxrelay
+from pyblock import mynode_pyblock
+from manage_apps import mynode_manage_apps
 from tor import mynode_tor
 from vpn import mynode_vpn
 from electrum_server import *
@@ -21,7 +26,11 @@ from messages import get_message
 from thread_functions import *
 from datetime import timedelta
 from device_info import *
+from device_warnings import *
+from systemctl_info import *
+from application_info import *
 import pam
+import re
 import json
 import random
 import logging
@@ -35,33 +44,55 @@ import os.path
 import psutil
 import time
 
+# Proxy class to redirect to HTTP or HTTPS depending on connection
+class ReverseProxied(object):
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        scheme = environ.get('HTTP_X_FORWARDED_PROTO')
+        if scheme:
+            environ['wsgi.url_scheme'] = scheme
+        return self.app(environ, start_response)
+
+
 app = Flask(__name__)
 app.config['DEBUG'] = False
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024     # 32 MB upload file max
 app.config['UPLOAD_FOLDER'] = "/tmp/flask_uploads"
-app.register_blueprint(mynode_bitcoind)
+app.config['SESSION_PERMANENT'] = True
+app.config["SESSION_COOKIE_NAME"] = "mynode_session_id"
+app.secret_key = get_flask_secret_key()
+timeout_days, timeout_hours = get_flask_session_timeout()
+app.permanent_session_lifetime = timedelta(days=timeout_days, hours=timeout_hours)
+app.register_error_handler(LoginError, handle_login_exception)
+
+app.wsgi_app = ReverseProxied(app.wsgi_app)
+
+my_logger = logging.getLogger('FlaskLogger')
+my_logger.setLevel(logging.DEBUG)
+handler = logging.handlers.RotatingFileHandler(filename='/var/log/flask', maxBytes=2000000, backupCount=2)
+my_logger.addHandler(handler)
+app.logger.addHandler(my_logger)
+app.logger.setLevel(logging.INFO)
+
+app.register_blueprint(mynode_bitcoin)
 app.register_blueprint(mynode_lnd)
+app.register_blueprint(mynode_api)
 app.register_blueprint(mynode_whirlpool)
 app.register_blueprint(mynode_dojo)
+app.register_blueprint(mynode_joininbox)
 app.register_blueprint(mynode_caravan)
+app.register_blueprint(mynode_sphinxrelay)
+app.register_blueprint(mynode_pyblock)
+app.register_blueprint(mynode_manage_apps)
 app.register_blueprint(mynode_tor)
 app.register_blueprint(mynode_electrum_server)
 app.register_blueprint(mynode_vpn)
 app.register_blueprint(mynode_settings)
 
 ### Definitions
-STATE_DRIVE_MISSING =         "drive_missing"
-STATE_DRIVE_CONFIRM_FORMAT =  "drive_format_confirm"
-STATE_DRIVE_FORMATTING =      "drive_formatting"
-STATE_DRIVE_MOUNTED =         "drive_mounted"
-STATE_QUICKSYNC_DOWNLOAD =    "quicksync_download"
-STATE_QUICKSYNC_COPY =        "quicksync_copy"
-STATE_QUICKSYNC_RESET =       "quicksync_reset"
-STATE_STABLE =                "stable"
-STATE_ROOTFS_READ_ONLY =      "rootfs_read_only"
-STATE_UNKNOWN =               "unknown"
-
 MYNODE_DIR =    "/mnt/hdd/mynode"
 BITCOIN_DIR =   "/mnt/hdd/mynode/bitcoin"
 LN_DIR =        "/mnt/hdd/mynode/lnd"
@@ -69,33 +100,6 @@ LN_DIR =        "/mnt/hdd/mynode/lnd"
 ### Global Variables
 need_to_stop = False
 threads = []
-
-### Helper functions
-def get_status():
-    try:
-        status_file = "/mnt/hdd/mynode/.mynode_status"
-        status = STATE_UNKNOWN
-
-        # If its been a while, check for error conditions
-        uptime_in_sec = get_system_uptime_in_seconds()
-        if uptime_in_sec > 120:
-            # Check for read-only sd card
-            if is_mount_read_only("/"):
-                return STATE_ROOTFS_READ_ONLY
-
-        # Get status stored on drive
-        if (os.path.isfile(status_file)):
-            try:
-                with open(status_file, "r") as f:
-                    status = f.read().strip()
-            except:
-                status = STATE_DRIVE_MISSING
-        else:
-            status = STATE_DRIVE_MISSING
-    except:
-        status = STATE_UNKNOWN
-    return status
-
 
 # Exception to throw on exit
 class ServiceExit(Exception):
@@ -111,7 +115,7 @@ def on_shutdown(signum, frame):
 @app.route("/")
 def index():
     check_logged_in()
-    status = get_status()
+    status = get_mynode_status()
 
     bitcoin_block_height = get_bitcoin_block_height()
     mynode_block_height = get_mynode_block_height()
@@ -153,13 +157,32 @@ def index():
             "ui_settings": read_ui_settings()
         }
         return render_template('state.html', **templateData)
+    elif status == STATE_HDD_READ_ONLY:
+        templateData = {
+            "title": "myNode Error",
+            "header_text": "Drive Error",
+            "subheader_text": "The external drive filesystem is read only. Try rebooting the device.",
+            "ui_settings": read_ui_settings()
+        }
+        return render_template('state.html', **templateData)
+    elif is_warning_present():
+        warning = get_current_warning()
+        templateData = {
+            "title": "myNode Warning",
+            "header_text": "Warning",
+            "subheader_text": get_warning_header(warning),
+            "description_text": get_warning_description(warning),
+            "warning_name": warning,
+            "ui_settings": read_ui_settings()
+        }
+        return render_template('warning.html', **templateData)
     elif status == STATE_DRIVE_MISSING:
         # Drive may be getting repaired
         if is_drive_being_repaired():
             templateData = {
                 "title": "myNode Repairing Drive",
                 "header_text": "Repairing Drive",
-                "subheader_text": Markup("Drive is being checked and repaired...<br/><br/>This will take several hours."),
+                "subheader_text": Markup("Drive is being checked and repaired...<br/><br/>This may take several hours."),
                 "ui_settings": read_ui_settings()
             }
             return render_template('state.html', **templateData)
@@ -195,6 +218,106 @@ def index():
             "title": "myNode Drive Mounted",
             "header_text": "Drive Mounted",
             "subheader_text": "myNode starting soon...",
+            "ui_settings": read_ui_settings()
+        }
+        return render_template('state.html', **templateData)
+    elif status == STATE_DRIVE_FULL:
+        message  = "Your drive is full!<br/><br/>"
+        message += "<p style='font-size: 16px; width: 800px; margin: auto;'>"
+        message += "To prevent corrupting any data, your device has stopped running most apps until more free space is available. "
+        message += "Please free up some space or attach a larger drive.<br/><br/>"
+        message += "If enabled, disabling <a href='/settings#quicksync'>QuickSync</a> can save a large amount of space.<br/><br/>"
+        message += "To move to larger drive, try the <a href='/settings#clone_tool'>Clone Tool</a>."
+        message += "</p>"
+        templateData = {
+            "title": "myNode Drive Full",
+            "header_text": "Drive Full",
+            "subheader_text": Markup(message),
+            "ui_settings": read_ui_settings()
+        }
+        return render_template('state.html', **templateData)
+    elif status == STATE_DRIVE_CLONE:
+        clone_state = get_clone_state()
+        if clone_state == CLONE_STATE_DETECTING:
+            templateData = {
+                "title": "myNode Clone Tool",
+                "header_text": "Cloning Tool",
+                "subheader_text": Markup("Detecting Drives..."),
+                "ui_settings": read_ui_settings(),
+                "refresh_rate": 10
+            }
+            return render_template('state.html', **templateData)
+        elif clone_state == CLONE_STATE_ERROR:
+            error = get_clone_error()
+            msg  = ""
+            msg += "Clone Error<br/></br>"
+            msg += error
+            msg += "<br/><br/><br/><small>Retrying in one minute.<br/><br/><br/>"
+            msg += "<a class='ui-button ui-widget ui-corner-all mynode_button_small' href='/settings/reboot-device'>Exit Clone Tool</a>"
+            templateData = {
+                "title": "myNode Clone Tool",
+                "header_text": "Cloning Tool",
+                "subheader_text": Markup(msg),
+                "ui_settings": read_ui_settings(),
+                "refresh_rate": 10
+            }
+            return render_template('state.html', **templateData)
+        elif clone_state == CLONE_STATE_NEED_CONFIRM:
+            # Clone was confirmed
+            if request.args.get('clone_confirm'):
+                os.system("touch /tmp/.clone_confirm")
+                time.sleep(3)
+                return redirect("/")
+            if request.args.get('clone_rescan'):
+                os.system("touch /tmp/.clone_rescan")
+                time.sleep(3)
+                return redirect("/")
+
+            source_drive = get_clone_source_drive()
+            target_drive = get_clone_target_drive()
+            target_drive_has_mynode = get_clone_target_drive_has_mynode()
+            source_drive_info = get_drive_info(source_drive)
+            target_drive_info = get_drive_info(target_drive)
+            templateData = {
+                "title": "myNode Clone Tool",
+                "header_text": "Cloning Tool",
+                "target_drive_has_mynode": target_drive_has_mynode,
+                "source_drive_info": source_drive_info,
+                "target_drive_info": target_drive_info,
+                "ui_settings": read_ui_settings(),
+            }
+            return render_template('clone_confirm.html', **templateData)
+        elif clone_state == CLONE_STATE_IN_PROGRESS:
+            progress = get_clone_progress()
+            templateData = {
+                "title": "myNode Clone Tool",
+                "header_text": "Cloning Tool",
+                "subheader_text": Markup("Cloning...<br/><br/>" + progress),
+                "ui_settings": read_ui_settings(),
+                "refresh_rate": 5
+            }
+            return render_template('state.html', **templateData)
+        elif clone_state == CLONE_STATE_COMPLETE:
+            templateData = {
+                "title": "myNode Clone Tool",
+                "header_text": "Cloning Tool",
+                "subheader_text": Markup("Clone Complete!"),
+                "ui_settings": read_ui_settings(),
+            }
+            return render_template('clone_complete.html', **templateData)
+        else:
+            templateData = {
+                "title": "myNode Clone Tool",
+                "header_text": "Cloning Tool",
+                "subheader_text": "Unknown Clone State: " + clone_state,
+                "ui_settings": read_ui_settings()
+            }
+            return render_template('state.html', **templateData)
+    elif status == STATE_GEN_DHPARAM:
+        templateData = {
+            "title": "myNode Generating Data",
+            "header_text": "Generating Data",
+            "subheader_text": "This may take 15-20 minutes...",
             "ui_settings": read_ui_settings()
         }
         return render_template('state.html', **templateData)
@@ -258,50 +381,51 @@ def index():
             "ui_settings": read_ui_settings()
         }
         return render_template('state.html', **templateData)
+    elif status == STATE_UPGRADING:
+        templateData = {
+            "title": "myNode Upgrading",
+            "header_text": "Upgrading...",
+            "subheader_text": "This may take a while...",
+            "refresh_rate": 120,
+            "ui_settings": read_ui_settings()
+        }
+        return render_template('state.html', **templateData)
+    elif status == STATE_SHUTTING_DOWN or is_shutting_down():
+        templateData = {
+            "title": "myNode Reboot",
+            "header_text": "Restarting",
+            "subheader_text": "This will take several minutes...",
+            "refresh_rate": 120,
+            "ui_settings": read_ui_settings()
+        }
+        return render_template('state.html', **templateData)
     elif status == STATE_STABLE:
-        bitcoind_status_code = get_service_status_code("bitcoind")
+        bitcoin_status_code = get_service_status_code("bitcoin")
         lnd_status_code = get_service_status_code("lnd")
         tor_status_color = "gray"
-        bitcoind_status_color = "red"
+        bitcoin_status_color = "red"
         lnd_status_color = "red"
         lnd_ready = is_lnd_ready()
-        rtl_status_color = "gray"
-        rtl_status = "Lightning Wallet"
-        lnbits_status_color = "gray"
-        lnbits_status = "Lightning Wallet"
-        thunderhub_status_color = "gray"
-        thunderhub_status = "Lightning Wallet"
-        electrs_status_color = "gray"
         electrs_active = is_electrs_active()
-        lndhub_status_color = "gray"
-        bitcoind_status = "Inactive"
+        bitcoin_status = "Inactive"
         lnd_status = "Inactive"
         electrs_status = ""
-        explorer_status = ""
-        explorer_ready = False
-        explorer_status_color = "red"
         lndconnect_status_color = "gray"
         btcpayserver_status_color = "gray"
-        btcrpcexplorer_status = ""
-        btcrpcexplorer_ready = False
-        btcrpcexplorer_status_color = "gray"
-        caravan_status = ""
-        caravan_ready = False
-        caravan_status_color = "gray"
-        mempoolspace_status_color = "gray"
+        mempool_status_color = "gray"
         vpn_status_color = "gray"
         vpn_status = ""
         current_block = 1234
 
-        if not get_has_updated_btc_info() or uptime_in_seconds < 150:
+        if not get_has_updated_btc_info() or uptime_in_seconds < 180:
             error_message = ""
-            if bitcoind_status_code != 0 and uptime_in_seconds > 300:
+            if bitcoin_status_code != 0 and uptime_in_seconds > 600:
                 error_message = "Bitcoin has experienced an error. Please check the logs."
             message = "<div class='small_message'>{}</<div>".format( get_message(include_funny=True) )
             templateData = {
                 "title": "myNode Status",
                 "header_text": "Starting...",
-                "subheader_text": Markup("Launching myNode services...{}".format(message)),
+                "subheader_text": Markup("Launching myNode Services{}".format(message)),
                 "error_message": error_message,
                 "ui_settings": read_ui_settings()
             }
@@ -318,179 +442,41 @@ def index():
         #     return render_template('state.html', **templateData)
 
         # Display sync info if not synced
-        if not is_bitcoind_synced():
+        if not is_bitcoin_synced():
             subheader = Markup("Syncing...")
-            if bitcoin_block_height != None:
-                message = "<div class='small_message'>{}</<div>".format( get_message(include_funny=True) )
-
-                remaining = bitcoin_block_height - mynode_block_height
-                subheader = Markup("Syncing...<br/>Block {} of {}{}".format(mynode_block_height, bitcoin_block_height, message))
+            if bitcoin_block_height == None:
+                bitcoin_block_height = 0
+            if mynode_block_height == None:
+                mynode_block_height = 0
             templateData = {
                 "title": "myNode Sync",
                 "header_text": "Bitcoin Blockchain",
-                "subheader_text": subheader,
+                "bitcoin_block_height": bitcoin_block_height,
+                "mynode_block_height": mynode_block_height,
+                "message": get_message(include_funny=True),
                 "ui_settings": read_ui_settings()
             }
-            return render_template('state.html', **templateData)
+            return render_template('syncing.html', **templateData)
 
-        # Find tor status
-        tor_status_color = get_service_status_color("tor@default")
-
-        # Find bitcoind status
-        if bitcoind_status_code != 0:
-            bitcoind_status_color = "red"
+        # Find bitcoid status
+        bitcoin_info = get_bitcoin_blockchain_info()
+        bitcoin_peers = get_bitcoin_peers()
+        if bitcoin_status_code != 0:
+            bitcoin_status_color = "red"
         else:
-            bitcoind_status = "Validating blocks..."
-            bitcoind_status_color = "green"
-            if bitcoin_block_height != None:
-                remaining = bitcoin_block_height - mynode_block_height
-                if remaining == 0:
-                    bitcoind_status = "Running"
-                else:
-                    bitcoind_status = "Syncing<br/>{} blocks remaining...".format(remaining)
-            else:
-                bitcoind_status = "Waiting for info..."
+            bitcoin_status_color = "green"
+            bitcoin_status = get_bitcoin_status()
             current_block = get_mynode_block_height()
 
         # Find lnd status
-        if is_bitcoind_synced():
-            lnd_status_color = "green"
-            lnd_status = get_lnd_status()
-            
-            # Get LND status
-            if not lnd_wallet_exists():
-                # This hides the restart /login attempt LND does from the GUI
-                lnd_status_color = "green"
-            elif lnd_status_code != 0:
-                lnd_status_color = "red"
-                if lnd_status == "Logging in...":
-                    lnd_status_color = "yellow"
-        else:
-            lnd_status_color = "yellow"
-            lnd_status = "Waiting..."
+        lnd_status = get_lnd_status()
+        lnd_status_color = get_lnd_status_color()
 
-        # Find lndhub status
-        if is_lndhub_enabled():
-            if lnd_ready:
-                lndhub_status_color = get_service_status_color("lndhub")
-
-        # Find RTL status
-        if lnd_ready:
-            if is_rtl_enabled():
-                status_code = get_service_status_code("rtl")
-                if status_code != 0:
-                    rtl_status_color = "red"
-                else:
-                    rtl_status_color = "green"
-
-        # Find LNbits status
-        if lnd_ready:
-            if is_lnbits_enabled():
-                status_code = get_service_status_code("lnbits")
-                if status_code != 0:
-                    lnbits_status_color = "red"
-                else:
-                    lnbits_status_color = "green"
-
-        # Find Thunderhub status
-        if lnd_ready:
-            if is_thunderhub_enabled():
-                status_code = get_service_status_code("thunderhub")
-                if status_code != 0:
-                    thunderhub_status_color = "red"
-                else:
-                    thunderhub_status_color = "green"
-
-        # Find electrs status
-        if is_electrs_enabled():
-            status_code = get_service_status_code("electrs")
-            electrs_status_color = get_service_status_color("electrs")
-            if status_code == 0:
-                electrs_status = get_electrs_status()
-
-        # Find btc-rpc-explorer status
-        btcrpcexplorer_status = "BTC RPC Explorer"
-        if is_btcrpcexplorer_enabled():
-            if is_bitcoind_synced():
-                if electrs_active:
-                    btcrpcexplorer_status_color = get_service_status_color("btc_rpc_explorer")
-                    status_code = get_service_status_code("btc_rpc_explorer")
-                    if status_code == 0:
-                        btcrpcexplorer_ready = True
-                else:
-                    btcrpcexplorer_status_color = "green"
-                    btcrpcexplorer_status = "Waiting on electrs..."
-            else:
-                btcrpcexplorer_status_color = "gray"
-                btcrpcexplorer_status = "Waiting on bitcoin..."
-
-        # Find mempool space status
-        mempoolspace_status = "Mempool Viewer"
-        if is_mempoolspace_enabled():
-            if is_installing_docker_images():
-                mempoolspace_status_color = "yellow"
-                mempoolspace_status = "Installing..."
-            else:
-                mempoolspace_status_color = get_service_status_color("mempoolspace")
-
-        # Find lndconnect status
-        if lnd_ready:
-            lndconnect_status_color = "green"
-
-        # Find btcpayserver status
-        btcpayserver_status = "Merchant Tool"
-        if lnd_ready:
-            btcpayserver_status_color = get_service_status_color("btcpayserver")
-        else:
-            btcpayserver_status = "Waiting on LND..."
-
-        # Find explorer status
-        explorer_status_color = electrs_status_color
-        if is_electrs_enabled():
-            if electrs_active:
-                explorer_ready = True
-                explorer_status = "myNode BTC Explorer"
-            else:
-                explorer_status = Markup("Bitcoin Explorer<br/><br/>Waiting on Electrum Server...")
-        else:
-            explorer_status = Markup("Bitcoin Explorer<br/><br/>Requires Electrum Server")
-
-        # Find VPN status
-        if is_vpn_enabled():
-            vpn_status_color = get_service_status_color("vpn")
-            status_code = get_service_status_code("vpn")
-            if status_code != 0:
-                vpn_status = "Unknown"
-            else:
-                if os.path.isfile("/home/pivpn/ovpns/mynode_vpn.ovpn"):
-                     vpn_status = "Running"
-                else:
-                    vpn_status = "Setting up..."
-
-        # Find whirlpool status
-        whirlpool_status, whirlpool_status_color, whirlpool_initialized = get_whirlpool_status()
-
-        # Find dojo status
-        dojo_status, dojo_status_color, dojo_initialized = get_dojo_status()
-        if is_installing_docker_images():
-            dojo_status_color = "yellow"
-            dojo_status = "Installing..."
-
-        # Find caravan status
-        caravan_status = ""
-        caravan_ready = False
-        caravan_status_color = "gray"
-        if is_caravan_enabled():
-            caravan_status_color = get_service_status_color("caravan")
-            caravan_ready = True
-            caravan_status = "Running"
-
-        # Find caravan status
-        specter_status = ""
-        specter_status_color = "gray"
-        if is_specter_enabled():
-            specter_status_color = get_service_status_color("specter")
-            specter_status = "Running"
+        # Find drive usage
+        drive_usage = get_drive_usage()
+        low_drive_space_error = False
+        if int(re.sub("[^0-9]", "", drive_usage)) > 95:
+            low_drive_space_error = True
 
         # Check for new version of software
         upgrade_available = False
@@ -499,73 +485,49 @@ def index():
         if current != "0.0" and latest != "0.0" and current != latest:
             upgrade_available = True
 
+        # Refresh rate
+        refresh_rate = 3600 * 24
+        if bitcoin_status_color == "red" or lnd_status_color == "red":
+            refresh_rate = 60
+        elif bitcoin_status_color == "yellow" or lnd_status_color == "yellow":
+            refresh_rate = 120
 
         templateData = {
             "title": "myNode Home",
+            "refresh_rate": refresh_rate,
             "config": CONFIG,
-            "bitcoind_status_color": bitcoind_status_color,
-            "bitcoind_status": Markup(bitcoind_status),
+            "apps": get_all_applications(order_by="homepage"),
+            "bitcoin_status_color": bitcoin_status_color,
+            "bitcoin_status": Markup(bitcoin_status),
             "current_block": current_block,
+            "bitcoin_peer_count": get_bitcoin_peer_count(),
+            "bitcoin_difficulty": get_bitcoin_difficulty(),
+            "bitcoin_mempool_size": get_bitcoin_mempool_size(),
+            "bitcoin_version": get_bitcoin_version(),
             "lnd_status_color": lnd_status_color,
             "lnd_status": Markup(lnd_status),
             "lnd_ready": lnd_ready,
-            "tor_status_color": tor_status_color,
+            "lnd_peer_count": get_lightning_peer_count(),
+            "lnd_channel_count": get_lightning_channel_count(),
+            "lnd_balance_info": get_lightning_balance_info(),
+            "lnd_wallet_exists": lnd_wallet_exists(),
+            "lnd_version": get_lnd_version(),
+            "lnd_deposit_address": get_lnd_deposit_address(),
+            "lnd_transactions": get_lightning_transactions(),
+            "lnd_payments_and_invoices": get_lightning_payments_and_invoices(),
+            "lnd_tx_display_limit": 6,
+            "lnd_channels": get_lightning_channels(),
+            "electrs_active": electrs_active,
+            "is_testnet_enabled": is_testnet_enabled(),
             "is_installing_docker_images": is_installing_docker_images(),
             "is_device_from_reseller": is_device_from_reseller(),
-            "electrs_status_color": electrs_status_color,
-            "electrs_status": Markup(electrs_status),
-            "electrs_enabled": is_electrs_enabled(),
-            "electrs_active": electrs_active,
-            "rtl_status_color": rtl_status_color,
-            "rtl_status": rtl_status,
-            "rtl_enabled": is_rtl_enabled(),
-            "lnbits_status_color": lnbits_status_color,
-            "lnbits_status": lnbits_status,
-            "lnbits_enabled": is_lnbits_enabled(),
-            "thunderhub_status_color": thunderhub_status_color,
-            "thunderhub_status": thunderhub_status,
-            "thunderhub_enabled": is_thunderhub_enabled(),
-            "lndhub_status_color": lndhub_status_color,
-            "lndhub_enabled": is_lndhub_enabled(),
-            "explorer_ready": explorer_ready,
-            "explorer_status_color": explorer_status_color,
-            "explorer_status": explorer_status,
-            "btcrpcexplorer_ready": btcrpcexplorer_ready,
-            "btcrpcexplorer_status_color": btcrpcexplorer_status_color,
-            "btcrpcexplorer_status": btcrpcexplorer_status,
-            "btcrpcexplorer_enabled": is_btcrpcexplorer_enabled(),
-            "caravan_ready": caravan_ready,
-            "caravan_status_color": caravan_status_color,
-            "caravan_status": caravan_status,
-            "caravan_enabled": is_caravan_enabled(),
-            "specter_status_color": specter_status_color,
-            "specter_status": specter_status,
-            "specter_enabled": is_specter_enabled(),
-            "mempoolspace_status_color": mempoolspace_status_color,
-            "mempoolspace_status": mempoolspace_status,
-            "mempoolspace_enabled": is_mempoolspace_enabled(),
-            "btcpayserver_enabled": is_btcpayserver_enabled(),
-            "btcpayserver_status_color": btcpayserver_status_color,
-            "btcpayserver_status": btcpayserver_status,
-            "lndconnect_status_color": lndconnect_status_color,
-            "vpn_status_color": vpn_status_color,
-            "vpn_status": vpn_status,
-            "vpn_enabled": is_vpn_enabled(),
-            "whirlpool_status": whirlpool_status,
-            "whirlpool_status_color": whirlpool_status_color,
-            "whirlpool_enabled": is_whirlpool_enabled(),
-            "whirlpool_initialized": whirlpool_initialized,
-            "is_dojo_installed": is_dojo_installed(),
-            "dojo_status": dojo_status,
-            "dojo_status_color": dojo_status_color,
-            "dojo_enabled": is_dojo_enabled(),
-            "dojo_initialized": dojo_initialized,
             "product_key_skipped": pk_skipped,
             "product_key_error": pk_error,
             "fsck_error": has_fsck_error(),
             "fsck_results": get_fsck_results(),
             "sd_rw_error": has_sd_rw_error(),
-            "drive_usage": get_drive_usage(),
+            "drive_usage": drive_usage,
+            "low_drive_space_error": low_drive_space_error,
             "cpu_usage": get_cpu_usage(),
             "ram_usage": get_ram_usage(),
             "swap_usage": get_swap_usage(),
@@ -622,163 +584,34 @@ def page_product_key():
 
         return "Error"
 
-@app.route("/toggle-lndhub")
-def page_toggle_lndhub():
+@app.route("/ignore-warning")
+def page_ignore_warning():
     check_logged_in()
-    if is_lndhub_enabled():
-        disable_lndhub()
-    else:
-        enable_lndhub()
+    if request.method == 'GET':
+        warning = request.args.get('warning')
+        skip_warning(warning)
     return redirect("/")
 
-@app.route("/toggle-thunderhub")
-def page_toggle_thunderhub():
-    check_logged_in()
-    if is_thunderhub_enabled():
-        disable_thunderhub()
-    else:
-        enable_thunderhub()
-    return redirect("/")
-
-@app.route("/toggle-electrs")
-def page_toggle_electrs():
-    check_logged_in()
-    if is_electrs_enabled():
-        disable_electrs()
-    else:
-        enable_electrs()
-    return redirect("/")
-
-@app.route("/toggle-rtl")
-def page_toggle_rtl():
-    check_logged_in()
-    if is_rtl_enabled():
-        disable_rtl()
-    else:
-        enable_rtl()
-    return redirect("/")
-
-@app.route("/toggle-lnbits")
-def page_toggle_lnbits():
-    check_logged_in()
-    if is_lnbits_enabled():
-        disable_lnbits()
-    else:
-        enable_lnbits()
-    return redirect("/")
-
-@app.route("/toggle-btcrpcexplorer")
-def page_toggle_btcrpcexplorer():
-    check_logged_in()
-    if is_btcrpcexplorer_enabled():
-        disable_btcrpcexplorer()
-    else:
-        enable_btcrpcexplorer()
-    return redirect("/")
-
-@app.route("/toggle-mempoolspace")
-def page_toggle_mempoolspace():
-    check_logged_in()
-    if is_mempoolspace_enabled():
-        disable_mempoolspace()
-    else:
-        enable_mempoolspace()
-    return redirect("/")
-
-@app.route("/toggle-btcpayserver")
-def page_toggle_btcpayserver():
-    check_logged_in()
-    if is_btcpayserver_enabled():
-        disable_btcpayserver()
-    else:
-        enable_btcpayserver()
-    return redirect("/")
-
-@app.route("/toggle-caravan")
-def page_toggle_caravan():
-    check_logged_in()
-    if is_caravan_enabled():
-        disable_caravan()
-    else:
-        enable_caravan()
-    return redirect("/")
-
-@app.route("/toggle-specter")
-def page_toggle_specter():
-    check_logged_in()
-    if is_specter_enabled():
-        disable_specter()
-    else:
-        enable_specter()
-    return redirect("/")
-
-@app.route("/toggle-vpn")
-def page_toggle_vpn():
-    check_logged_in()
-    if is_vpn_enabled():
-        disable_vpn()
-    else:
-        enable_vpn()
-    return redirect("/")
-
-@app.route("/toggle-whirlpool")
-def page_toggle_whirlpool():
-    check_logged_in()
-    if is_whirlpool_enabled():
-        disable_whirlpool()
-    else:
-        enable_whirlpool()
-    return redirect("/")
-
-@app.route("/toggle-dojo")
-def page_toggle_dojo():
-    check_logged_in()
-    if is_dojo_enabled():
-        disable_dojo()
-    else:
-        enable_dojo()
-    return redirect("/")
-
-@app.route("/toggle-dojo-install")
-def page_toggle_dojo_install():
+@app.route("/toggle-enabled")
+def page_toggle_app():
     check_logged_in()
 
-    # In case of refresh, mark toggle was started
-    check_and_mark_reboot_action("toggle_dojo_install")
+    # Check application specified
+    if not request.args.get("app"):
+        flash("No application specified", category="error")
+        return redirect("/")
+    
+    # Check application name is valid
+    app_short_name = request.args.get("app")
+    if not is_application_valid(app_short_name):
+        flash("Application is invalid", category="error")
+        return redirect("/")
 
-    if is_dojo_installed():
-        # Mark app as not installed
-        uninstall_dojo()        
-
-        # Re-install app (this will uninstall and not re-install after reboot since install file is missing)
-        t = Timer(1.0, reinstall_app, ["dojo"])
-        t.start()
-
-        # Display wait page
-        templateData = {
-            "title": "myNode Uninstall",
-            "header_text": "Uninstalling",
-            "subheader_text": "This may take a while...",
-            "ui_settings": read_ui_settings()
-        }
-        return render_template('reboot.html', **templateData)
+    # Toggle enabled/disabled
+    if is_service_enabled(app_short_name):
+        disable_service(app_short_name)
     else:
-        # Mark Dojo for install
-        install_dojo()
-
-        # Re-install app
-        t = Timer(1.0, reboot_device)
-        t.start()
-
-        # Display wait page
-        templateData = {
-            "title": "myNode Install",
-            "header_text": "Installing",
-            "subheader_text": "This may take a while...",
-            "ui_settings": read_ui_settings()
-        }
-        return render_template('reboot.html', **templateData)
-
+        enable_service(app_short_name)
     return redirect("/")
 
 @app.route("/clear-fsck-error")
@@ -845,7 +678,8 @@ def internal_error(error):
 @app.before_request
 def before_request():
     if is_https_forced():
-        if not request.is_secure:
+        scheme = request.headers.get('X-Forwarded-Proto')
+        if scheme and scheme == 'http' and request.url.startswith('http://'):
             url = request.url.replace('http://', 'https://', 1)
             code = 302
             app.logger.info("Redirecting to HTTPS ({})".format(url))
@@ -865,25 +699,19 @@ def set_response_headers(response):
 
 @app.before_first_request
 def before_first_request():
+    app.logger.info("BEFORE_FIRST_REQUEST START")
+
+    # Need to do anything here?
+
+    app.logger.info("BEFORE_FIRST_REQUEST END")
+    
+
+def start_threads():
     global threads
-
-    my_logger = logging.getLogger('FlaskLogger')
-    my_logger.setLevel(logging.DEBUG)
-    handler = logging.handlers.RotatingFileHandler(filename='/var/log/flask', maxBytes=2000000, backupCount=2)
-    my_logger.addHandler(handler)
-    app.logger.addHandler(my_logger)
-    app.logger.setLevel(logging.INFO)
-
-    app.register_error_handler(LoginError, handle_login_exception)
-
-    app.config["SESSION_COOKIE_NAME"] = "mynode_session_id"
-    app.secret_key = get_flask_secret_key()
-    app.permanent_session_lifetime = timedelta(days=90)
-
-    app.logger.info("BEFORE_FIRST_REQUEST")
+    app.logger.info("STARTING THREADS")
 
     # Start threads
-    btc_thread1 = BackgroundThread(update_bitcoin_main_info_thread, 60)
+    btc_thread1 = BackgroundThread(update_bitcoin_main_info_thread, 60) # Restart after 60, thread manages timing
     btc_thread1.start()
     threads.append(btc_thread1)
     btc_thread2 = BackgroundThread(update_bitcoin_other_info_thread, 60)
@@ -901,20 +729,25 @@ def before_first_request():
     public_ip_thread = BackgroundThread(find_public_ip, 60*60*12) # 12-hour repeat
     public_ip_thread.start()
     threads.append(public_ip_thread)
+    dmesg_thread = BackgroundThread(monitor_dmesg, 60) # Runs forever, restart after 60 if it fails 
+    dmesg_thread.start()
+    threads.append(dmesg_thread)
 
     app.logger.info("STARTED {} THREADS".format(len(threads)))
 
-def stop_app():
+def stop_threads():
     global threads
 
-    app.logger.info("START STOP_APP")
-
-    app.logger.info("STOPPING {} THREADS".format(len(threads)))
-
     # Stop threads
+    app.logger.info("STOPPING {} THREADS".format(len(threads)))
     for t in threads:
         app.logger.info("Killing {}".format(t.pid))
         os.kill(t.pid, signal.SIGKILL)
+
+def stop_app():
+    app.logger.info("STOP_APP START")
+
+    stop_threads()
 
     # Shutdown Flask (if used)
     func = request.environ.get('werkzeug.server.shutdown')
@@ -923,13 +756,16 @@ def stop_app():
     else:
         func()
 
-    app.logger.info("DONE STOP_APP")
+    app.logger.info("STOP_APP END")
 
 if __name__ == "__main__":
 
     # Handle signals
     signal.signal(signal.SIGTERM, on_shutdown)
     signal.signal(signal.SIGINT, on_shutdown)
+
+    # Setup and start threads
+    start_threads()
 
     try:
         app.run(host='0.0.0.0', port=80)

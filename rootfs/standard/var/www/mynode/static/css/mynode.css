@@ -1,3 +1,9 @@
+@import url(/static/fonts/inter.css);
+
+body, input, select, textarea {
+  font-family: "Inter", "Source Sans Pro", Helvetica, sans-serif;
+}
+
 .logo_header {
     margin: auto;
     width: 300px;
@@ -11,27 +17,51 @@
 
 .footer {
     margin: auto;
-    padding-top: 25px;
+    padding: 25px 0 50px 0;
     text-align: center;
     font-size: 12px;
-    font-family: Arial, Helvetica, sans-serif;
 }
 
 a:link {
     color: black;
-    text-decoration: underline dashed orange;
-}  
+    text-decoration: underline solid #0000005e;
+}
 a:visited {
     color: black;
-    text-decoration: underline dashed orange;
+    text-decoration: underline solid #0000005e;
 }
 a:hover {
     color: black;
-    text-decoration: underline solid orange;
+    text-decoration: underline solid #0000005e;
 }
 a:active {
     color: black;
-    text-decoration: underline dashed orange;
+    text-decoration: underline solid #0000005e;
+}
+
+table{
+    border-collapse: collapse;
+}
+
+td, th {
+    padding-top: 8px;
+    padding-bottom: 6px;
+    border-collapse: collapse;
+    border-top: #e7e7e7 1px solid;
+}
+.service_table_td_left_header {
+    padding-right: 10px;
+    min-width: 120px;
+}
+
+.info_table {
+    font-size: 16px;
+}
+.info_table th {
+    font-weight: normal;
+    padding-right: 30px;
+    min-width: 100px;
+    text-align: left;
 }
 
 .mynode_back_div {
@@ -40,8 +70,16 @@ a:active {
     left: 20px;
 }
 
+.mynode_top_left_div {
+    position: fixed;
+    font-size: 14px;
+    top: 20px;
+    left: 20px;
+}
+
 .mynode_top_right_div {
     position: fixed;
+    font-size: 14px;
     top: 20px;
     right: 20px;
 }
@@ -50,7 +88,6 @@ a:active {
     color: #555555;
     text-align: center;
     font-size: 56px;
-    font-family: Arial, Helvetica, sans-serif;
     padding-bottom: 15px;
 }
 
@@ -58,14 +95,18 @@ a:active {
     color: #555555;
     text-align: center;
     font-size: 28px;
-    font-family: Arial, Helvetica, sans-serif;
 }
 
 .state_error {
     color: #DD5555;
     text-align: center;
     font-size: 14px;
-    font-family: Arial, Helvetica, sans-serif;
+}
+
+.state_warning {
+    color: #555555;
+    text-align: center;
+    font-size: 14px;
 }
 
 .shutoff_warning {
@@ -76,16 +117,15 @@ a:active {
     color: #555555;
     text-align: center;
     font-size: 32px;
-    font-family: Arial, Helvetica, sans-serif;
+
     margin-bottom: 5px;
 }
 .main_header_sub_text {
-    width: 600px;
+    width: 800px;
     color: #444444;
     margin: auto;
     text-align: center;
     font-size: 14px;
-    font-family: Arial, Helvetica, sans-serif;
     margin-bottom: 10px;
 }
 
@@ -93,39 +133,43 @@ a:active {
     color: #555555;
     text-align: center;
     font-size: 24px;
-    font-family: Arial, Helvetica, sans-serif;
     margin-top: 15px;
     margin-bottom: 5px;
 }
 .sub_header_sub_text {
-    width: 600px;
+    width: 800px;
     color: #444444;
     margin: auto;
     text-align: center;
     font-size: 14px;
-    font-family: Arial, Helvetica, sans-serif;
     margin-bottom: 10px;
 }
 
 .error_message {
     color: red;
     font-size: 16px;
-    font-family: Arial, Helvetica, sans-serif;
     padding-top: 10px;
     padding-bottom: 10px;
 }
 .success_message {
     color: green;
     font-size: 16px;
-    font-family: Arial, Helvetica, sans-serif;
     padding-top: 10px;
     padding-bottom: 10px;
+}
+
+.large_error_message {
+    color: #BB4444;
+    text-align: center;
+    font-size: 28px;
+    font-family: Arial, Helvetica, sans-serif;
+    padding-top: 20px;
 }
 
 .app_tile_row_divider_left {
     width: 50%;
     float: left;
-    margin: 0px;
+    margin: 25px;
 }
 
 .app_tile_row_divider_right {
@@ -133,6 +177,14 @@ a:active {
     float: right;
     margin: 0px;
 
+}
+
+.app_tile_grid_container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-gap: 0px;
+    width: 850px;
+    margin: auto;
 }
 
 .app_tile_row {
@@ -154,29 +206,191 @@ a:active {
 .app_tile {
     display: inline-block;
     position: relative;
-    border: 3px solid orange;
-    border-radius: 20px;
+    border: none;
+    border-radius: 10px;
     width: 130px;
     min-width: 130px;
     height: 180px;
     padding: 10px;
     margin: 6px 10px 6px 10px;
+    margin-bottom: 16px;
+    background: #f0f0f0;
 }
 .app_tile_short {
     display: inline-block;
     position: relative;
-    border: 3px solid orange;
-    border-radius: 20px;
+    border-radius: 10px;
     width: 130px;
     min-width: 130px;
     height: 150px;
     padding: 10px;
     margin: 10px;
+    background: #f0f0f0;
 }
+/* width of two tiles */
+.app_tile_wide {
+    display: inline-block;
+    position: relative;
+    border: none;
+    border-radius: 10px;
+    width: 385px;
+    height: 180px;
+    padding: 10px;
+    margin: 6px 10px 6px 10px;
+    background: #f0f0f0;
+}
+/* width of four tiles (full width) */
+.app_tile_bitcoin_recent_blocks {
+    display: inline-block;
+    position: relative;
+    border: none;
+    border-radius: 10px;
+    width: 810px;
+    height: 120px;
+    padding: 10px;
+    margin: 6px 10px 6px 10px;
+    background: #f0f0f0;
+}
+.app_tile_lightning_details {
+    display: inline-block;
+    position: relative;
+    border: none;
+    border-radius: 10px;
+    width: 810px;
+    
+    padding: 10px;
+    margin: 6px 10px 6px 10px;
+    background: #f0f0f0;
+}
+.bitcoin_block_set {
+    margin-left: auto;
+    margin-right: auto;
+}
+.bitcoin_block {
+    display: inline-block;
+    position: relative;
+    text-align: center;
+    width: 85px;
+    margin: 5px 8px 5px 8px;
+}
+.bitcoin_block_orange_square {
+    display: inline-block;
+    position: relative;
+    background-color: orange;
+    color: #222;
+    width: 85px;
+    height: 85px;
+    border-radius: 5px;
+    margin-bottom: 5px;
+}
+.bitcoin_block_size {
+    display: inline-block;
+    position: relative;
+    font-size: 14px;
+    font-weight: bold;
+    margin-top: 10px;
+    margin-bottom: 5px;
+    width: 100%;
+}
+.bitcoin_block_num_txs {
+    display: inline-block;
+    position: relative;
+    font-size: 10px;
+    margin-bottom: 5px;
+    width: 100%;
+}
+.bitcoin_block_time {
+    display: inline-block;
+    position: relative;
+    font-size: 10px;
+    margin-bottom: 5px;
+    width: 100%;
+}
+
+.lightning_channel_container {
+    width: 1000px;
+}
+.lightning_pin_details_icon {
+    width: 26px;
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    cursor: pointer;
+}
+.lightning_channel_top_row {
+    margin-bottom: 3px;
+    height: 25px;
+}
+.lightning_channel_label {
+    font-weight: bold;
+    float: left;
+}
+.lightning_channel_status_icon {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    -moz-border-radius: 50%;
+    -webkit-border-radius: 50%;
+}
+.lightning_channel {
+    display: inline-block;
+    width: 100%;
+    margin-bottom: 20px;
+}
+.lightning_channel_bar {
+    margin: auto;
+}
+.lightning_channel_bar_label_left {
+    font-size: 12px;
+    float: left;
+}
+.lightning_channel_bar_label_right {
+    font-size: 12px;
+    float: right;
+}
+.lightning_channel_bar.ui-progressbar {
+    background: orange;
+}
+.lightning_channel_bar .ui-progressbar-value {
+    background: green;
+}
+
+.bitcoin_table {
+    width: 1000px;
+    margin: auto;
+    text-align: center;
+    vertical-align: middle;
+    font-size: 14px;
+    font-family: Arial, Helvetica, sans-serif;
+    border-collapse: collapse;
+    background-color: white;
+}
+.bitcoin_table_header {
+    font-size: 16px;
+    font-weight: bold;
+    font-family: Arial, Helvetica, sans-serif;
+}
+
+table.bitcoin_table tbody tr:nth-child(odd) td{
+    background-color: #ffa5000d;
+}
+
+table.bitcoin_table tbody tr:nth-child(even) td{
+
+}
+
+table.bitcoin_table td {
+    padding: 10px 0;
+    margin: 0px;
+}
+
 .green { background-color: green; }
 .yellow { background-color: yellow; }
 .red { background-color: red; }
 .gray { background-color: gray; }
+.blue { background-color: blue; }
+.clear { opacity: 100%; }
 
 .green_text {color: green;}
 .yellow_text {color: yellow;}
@@ -186,8 +400,8 @@ a:active {
     width: 14px;
     height: 14px;
     position: absolute;
-    top: 5px;
-    left: 5px;
+    top: 10px;
+    left: 10px;
     border-radius: 50%;
     -moz-border-radius: 50%;
     -webkit-border-radius: 50%;
@@ -207,52 +421,58 @@ a:active {
 .app_logo_icon {
     margin: auto;
     display: block;
-    width: 40%;
+    width: 55px;
 }
 .app_title {
     font-size: 18px;
     text-align: center;
-    font-family: Arial, Helvetica, sans-serif;
     margin-bottom: 6px;
+    line-height: 1em;
 }
 .app_status {
     font-size: 12px;
-    font-family: Arial, Helvetica, sans-serif;
     line-height: 130%;
+    text-align: center;
+    width: 100%;
+}
+.app_beta_tag_image {
+    width: 50px;
+    height: 50px;
+    position: absolute;
+    left: 100px;
+    top: 0px;
 }
 .app_contents {
     font-size: 12px;
-    font-family: Arial, Helvetica, sans-serif;
     position: absolute;
     margin: auto;
     width: 130px;
-    bottom: 10px;
+    bottom: 13px;
     text-align: center;
 }
 
 .info_tile {
     display: inline-block;
     position: relative;
-    border: 3px solid orange;
-    border-radius: 25px;
+    background: #f0f0f0;
+    border-radius: 8px;
     min-width: 120px;
-    margin-left: 10px;
-    margin-right: 10px;
+    margin-left: 15px;
+    margin-right: 15px;
 }
 .info_tile_header {
-    border-top-left-radius: 20px;
-    border-top-right-radius: 20px;
-    font-size: 18px;
-    font-family: Arial, Helvetica, sans-serif;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    font-size: 12px;
     color: #FFFFFF;
     background-color: orange;
     padding: 5px 10px 5px 10px;
     margin-top: -2px;
+    text-transform: uppercase;
 }
 .info_tile_contents {
     margin-top: 5px;
     font-size: 16px;
-    font-family: Arial, Helvetica, sans-serif;
     vertical-align: middle;
     padding: 5px 10px 5px 10px;
 }
@@ -263,7 +483,6 @@ a:active {
     margin: auto;
     text-align: justify;
     font-size: 14px;
-    font-family: Arial, Helvetica, sans-serif;
     margin-bottom: 40px;
 }
 
@@ -272,14 +491,14 @@ a:active {
     color: #444444;
     margin: auto;
     text-align: left;
-    font-size: 18px;
-    font-family: Arial, Helvetica, sans-serif;
+    font-size: 16px;
     margin-bottom: 40px;
     margin-top: 40px;
 }
 
 .instructions-header {
     font-size: 18px;
+    font-weight: bold;
     text-align: center;
 }
 
@@ -298,46 +517,75 @@ a:active {
 .mynode_button {
     width: 80%;
     font-size: 14px;
-    font-family: Arial, Helvetica, sans-serif;
     margin-top: 5px;
+}
+
+
+.ui-state-default a, .ui-state-default a:link,
+.ui-state-default a:visited, a.ui-button,
+a:link.ui-button, a:visited.ui-button, .ui-button {
+  border: none;
+}
+
+
+.ui-button.ui-widget.ui-corner-all{
+  border: none;
+  border-radius: 6px;
+  color: #000000;
+  background-color: #e2e2e2;
+}
+
+.ui-button.ui-widget.ui-corner-all:hover{
+  background-color: #d7d7d7;
+}
+
+.install_button {
+    background-color: #99dd9d !important;
+}
+.install_button:hover {
+    background-color: #90d090 !important;
+}
+
+.uninstall_button {
+    background-color: #ffaaaa !important;
+}
+.uninstall_button:hover {
+    background-color: #f0a0a0 !important;
 }
 
 .mynode_button_small {
     font-size: 12px !important;
-    font-family: Arial, Helvetica, sans-serif;
 }
 
-.drive_usage {
+.device_status_info {
     margin-bottom: 25px;
     font-size: 24px;
     color: #222222;
 }
 
 .settings_block_header {
-    color: #333333;
-    border: 3px solid orange;
-    border-radius: 25px;
+    color: #f19c00;
+    border-bottom: 1px solid #ffb700;
     text-align: center;
     display: block;
     font-size: 24px;
-    font-family: Arial, Helvetica, sans-serif;
-    padding: 5px;
+    padding: 15px;
     margin-bottom: 15px;
 }
 .settings_block_subheader {
-    color: #333333;
+    color: #f19c00;
     text-align: left;
-    font-size: 18px;
-    font-family: Arial, Helvetica, sans-serif;
-    font-weight: bold;
-    margin-bottom: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 .settings_block_subheader_status {
     color: #333333;
     height: 18px;
     text-align: left;
     font-size: 14px;
-    font-family: Arial, Helvetica, sans-serif;
     font-style: italic;
     vertical-align: middle;
     margin-bottom: 2px;
@@ -357,29 +605,31 @@ a:active {
     margin: auto;
     text-align: justify;
     font-size: 14px;
-    font-family: Arial, Helvetica, sans-serif;
-    margin-bottom: 30px;
+    margin-bottom: 20px;
+    padding: 0px 15px 15px 15px;
+    /* background-color: #f0f0f0; */
+    background-color: #f8f8f8;
+    border-radius: 10px;
+    -moz-border-radius: 10px;
+    -webkit-border-radius: 10px;
 }
 .divider {
     width: 100%;
-    margin-top: 12px;
-    margin-bottom: 12px;
-    border-bottom: 3px dashed orange;
+    margin-top: 25px;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #ffb70054;
     margin-left: auto;
     margin-right: auto;
 }
 .settings_button {
     font-size: 14px;
-    font-family: Arial, Helvetica, sans-serif;
-    margin-top: 5px;
+    margin-top: 15px;
 }
 .settings_button_small {
     font-size: 10px !important;
-    font-family: Arial, Helvetica, sans-serif;
 }
 .settings_input {
     font-size: 14px;
-    font-family: Arial, Helvetica, sans-serif;
 }
 .status_container_list {
     margin-left: 150px;
@@ -395,23 +645,22 @@ a:active {
     width: 500px;
     font-size: 12px;
     line-height: 1.5;
-    font-family: Arial, Helvetica, sans-serif;
     text-align: center;
     padding-top: 40px;
     margin: auto;
 }
 
-#lndconnect_tabs {
+.pair_wallet_text {
     margin: auto;
-    width: 500px;
-    font-family: Arial, Helvetica, sans-serif;
+    margin-top: 15px;
+    width: 1000px;
     font-size: 10px;
     line-height: 1.2;
     word-wrap: break-word;
     text-align: center;
 }
-.lndconnect_qr_code {
-    width: 500px;
+.pair_wallet_qr_code {
+    width: 400px;
     margin: auto;
 }
 
@@ -422,8 +671,7 @@ a:active {
 .product_key_input {
     width: 100%;
     font-size: 24px;
-    font-family: Arial, Helvetica, sans-serif;
-    text-align: center; 
+    text-align: center;
 }
 .product_key_save_button {
     width: 100%;
@@ -440,12 +688,11 @@ a:active {
     color: #333333;
     border: 3px solid orange;
     background-color: rgb(255, 250, 238);
-    width: 600px;
+    width: 800px;
     border-radius: 25px;
     text-align: justify;
     display: block;
     font-size: 12px;
-    font-family: Arial, Helvetica, sans-serif;
     padding: 5px;
     margin: auto;
     margin-bottom: 20px;
@@ -455,12 +702,11 @@ a:active {
     color: #333333;
     border: 3px solid red;
     background-color: rgb(255, 238, 238);
-    width: 600px;
+    width: 800px;
     border-radius: 25px;
     text-align: justify;
     display: block;
     font-size: 12px;
-    font-family: Arial, Helvetica, sans-serif;
     padding: 5px;
     margin: auto;
     margin-bottom: 20px;
@@ -470,23 +716,15 @@ a:active {
     margin: auto;
     padding-bottom: 10px;
     text-align: center;
-    font-family: Arial, Helvetica, sans-serif;
 }
 
-.upgrade_ad_main_page {
-    color: #333333;
-    border: 3px solid orange;
-    background-color: rgb(255, 250, 238);
-    width: 600px;
-    border-radius: 25px;
-    text-align: justify;
-    display: block;
-    font-size: 12px;
-    font-family: Arial, Helvetica, sans-serif;
-    padding: 5px;
-    padding-left: 12px;
-    margin: auto;
-    margin-bottom: 20px;
+.generic_status_icon {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    -moz-border-radius: 50%;
+    -webkit-border-radius: 50%;
 }
 
 .port_forwarded_icon {
@@ -525,6 +763,7 @@ a:active {
     overflow-y: scroll;
     border: 2px solid #222222;
     border-radius: 5px;
+    background-color: #f8f8f8;
 }
 .login_div {
     width: 300px;
@@ -532,7 +771,6 @@ a:active {
     margin: auto;
     text-align: justify;
     font-size: 18px;
-    font-family: Arial, Helvetica, sans-serif;
     margin-top: 10px;
     margin-bottom: 40px;
 }
@@ -554,13 +792,34 @@ a:active {
     margin: auto;
     text-align: center;
     font-size: 18px;
-    font-family: Arial, Helvetica, sans-serif;
     margin-top: 10px;
     margin-bottom: 40px;
 }
 .format_button {
     width: 500px;
     margin-top: 5px;
+}
+
+.warning_div {
+    width: 800px;
+    color: #444444;
+    margin: auto;
+    text-align: center;
+    font-size: 18px;
+    margin-top: 10px;
+    margin-bottom: 40px;
+}
+.warning_button {
+    width: 500px;
+    margin-top: 5px;
+}
+.warning_divider {
+    width: 100%;
+    margin-top: 12px;
+    margin-bottom: 12px;
+    border-bottom: 3px dashed yellow;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 #download-handle {
@@ -585,7 +844,6 @@ a:active {
     margin: auto;
     text-align: justify;
     font-size: 14px;
-    font-family: Arial, Helvetica, sans-serif;
     margin-top: 10px;
     margin-bottom: 40px;
 }
@@ -601,6 +859,21 @@ a:active {
     width: 128px;
 }
 
+.loading_spinner_overlay {
+    background: #ffffff;
+    color: #444444;
+    position: fixed;
+    height: 100%;
+    width: 100%;
+    z-index: 5000;
+    top: 0;
+    left: 0;
+    float: left;
+    text-align: center;
+    padding-top: 25%;
+    opacity: .92;
+}
+
 .halving_message_main_page {
     color: #333333;
     border: 3px solid orange;
@@ -610,7 +883,6 @@ a:active {
     text-align: center;
     display: block;
     font-size: 32px;
-    font-family: Arial, Helvetica, sans-serif;
     padding: 5px;
     padding-left: 12px;
     margin: auto;

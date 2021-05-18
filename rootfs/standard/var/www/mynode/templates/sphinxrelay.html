@@ -1,0 +1,79 @@
+<!DOCTYPE html lang="en">
+    <head>
+        <title>{{ title }}</title>
+        {% include 'includes/head.html' %}
+
+        <script>
+        $(document).ready(function() {
+            $("#sphinxrelay_ui").on("click", function() {
+                url = 'http://'+location.hostname+':53001/static/'
+                window.open(url,'_blank');
+            });
+
+            $("#sphinxrelay_reset").on("click", function() {
+                if (confirm("Are you sure you want to reset sphinx relay? You will lose all chat data and accounts and you will need to re-pair your apps.")) {
+                    window.location.href='/sphinxrelay/reset';
+                }
+            });
+        });
+        </script>
+    </head>
+    <body>
+        {% include 'includes/logo_header.html' %}
+        <div class="mynode_back_div">
+            <a class="ui-button ui-widget ui-corner-all mynode_back" href="/"><span class="ui-icon ui-icon-home"></span>home&nbsp;</a>
+        </div>
+
+        <div class="main_header">Sphinx Relay</div>
+
+        {% include 'includes/message_display.html' %}
+        <br/>
+
+
+        <div class="app_tile_row">
+            <div class="info_tile">
+                <div class="info_tile_header">Status</div>
+                <div class="info_tile_contents">
+                    <table class="info_table">
+                        <tr>
+                            <th>Status</th>
+                            <td>{{sphinxrelay_status}}</td>
+                        </tr>
+                        <tr>
+                            <th>Connection String</th>
+                            <td style="font-size: 10px;">{{sphinxrelay_connection_string}}</td>
+                        </tr>
+                        <tr>
+                            <th>Onion URL</th>
+                            <td style="font-size: 12px;">{{sphinxrelay_onion_url}}</td>
+                        </tr>
+                        <tr>
+                            <th>Sphinx Relay Interface</th>
+                            <td><button id="sphinxrelay_ui" target="_blank" class="ui-button ui-widget ui-corner-all mynode_button_small" style="width: 100px;">Open</button></td>
+                        </tr>
+                        <tr>
+                            <th>Actions</th>
+                            <td>
+                                <button id="sphinxrelay_reset" class="ui-button ui-widget ui-corner-all mynode_button_small" style="width: 100px;">Reset Data</a>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="instructions">
+            <div class="instructions-header">Instructions to setup Sphinx Relay</div>
+            <ol class="instructions-steps">
+                <li>Ensure that Sphinx Relay is enabled and you see "Running" on the status tile</li>
+                <li>Download and install Sphinx from <a href="https://sphinx.chat/" target="_blank">sphinx.chat</a></li>
+                <li>Paste the Connection String into the Sphinx application</li>
+                <li>Sphinx should now be connected to your own node!</li>
+                <li>Enjoy!</li>
+            </ol>
+
+            <br/><br/>
+
+        </div>
+    </body>
+</html>

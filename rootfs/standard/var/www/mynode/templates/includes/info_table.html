@@ -1,0 +1,78 @@
+<div class="settings_block_subheader">
+    Info
+</div>
+<table border="0" class="info_table">
+    <tr>
+        <th>Serial Number</th>
+        <td>{{serial_number}}</td>
+    </tr>
+    <tr>
+        <th>Product Key</th>
+        <td>
+            {% if product_key_skipped %}
+                {{product_key}}
+                &nbsp;<a href="/product-key" class="ui-button ui-widget ui-corner-all settings_button_small">Enter Product Key</a>
+            {% else %}
+                <button id="show_product_key" class="ui-button ui-widget ui-corner-all settings_button_small">Show</button>
+                <span id="product_key" style="display: none;">{{product_key}}</span>
+                &nbsp;<a href="/product-key" class="ui-button ui-widget ui-corner-all settings_button_small">Change</a>
+            {% endif %}
+        </td>
+    </tr>
+    <tr>
+        <th>Device Type</th>
+        <td>{{device_type}}</td>
+    </tr>
+    <tr>
+        <th>Device RAM</th>
+        <td>{{device_ram}} GB</td>
+    </tr>
+    <tr>
+        <th>Local IP</th>
+        <td>{{local_ip}}</td>
+    </tr>
+    {% if throttled_data['RAW_DATA'] != "0x0" and throttled_data['RAW_DATA'] != "MISSING" %}
+    {% if throttled_data['UNDERVOLTED'] or throttled_data['CAPPED'] or throttled_data['THROTTLED'] or throttled_data['SOFT_TEMPLIMIT'] %}
+    <tr>
+        <th>Active Throttling Data</th>
+        <td style="color: red; font-size: 10px">
+            {% if throttled_data['UNDERVOLTED'] %}Undervolted<br/>{% endif %}
+            {% if throttled_data['CAPPED'] %}Capped CPU<br/>{% endif %}
+            {% if throttled_data['THROTTLED'] %}Throttled CPU<br/>{% endif %}
+            {% if throttled_data['SOFT_TEMPLIMIT'] %}Hit Soft Temp Limit<br/>{% endif %}
+        </td>
+    </tr>
+    {% endif %}
+    {% if throttled_data['HAS_UNDERVOLTED'] or throttled_data['HAS_CAPPED'] or throttled_data['HAS_THROTTLED'] or throttled_data['HAS_SOFT_TEMPLIMIT'] %}
+    <tr>
+        <th>Historic Throttling Data<br/><span style="font-size: 10px;">*Occurred since last reboot</span></th>
+        <td style="color: red; font-size: 10px;">
+            {% if throttled_data['HAS_UNDERVOLTED'] %}Undervolted<br/>{% endif %}
+            {% if throttled_data['HAS_CAPPED'] %}Capped CPU<br/>{% endif %}
+            {% if throttled_data['HAS_THROTTLED'] %}Throttled CPU<br/>{% endif %}
+            {% if throttled_data['HAS_SOFT_TEMPLIMIT'] %}Hit Soft Temp Limit<br/>{% endif %}
+        </td>
+    </tr>
+    {% endif %}
+    {% endif %}
+    {% if oom_error %}
+    <tr>
+        <th>Memory</th>
+        <td style="color: black; font-size: 12px;">
+            <!--<span class="ui-icon ui-icon-alert"></span> <b>Low Memory</b> <span class="ui-icon ui-icon-alert"></span><br/>-->
+            <b>Low Memory</b><br/>
+            Your device was running low on memory and a process has been restarted. You may want to disable some applications.<br/>
+            <span style="font-size: 10px;">{{ oom_info }}</span><br/><br/>
+            <a href="/settings/clear-oom-error" class="ui-button ui-widget ui-corner-all settings_button_small">Clear Warning</a>
+        </td>
+    </tr>
+    {% endif %}
+    {% if has_checkin_error %}
+    <tr>
+        <th>Server</th>
+        <td style="color: red;"><b>Error contacting mynodebtc.com via Tor!</b><br/>You may have issues checking for new versions or saving product keys.</td>
+    </tr>
+    {% endif %}
+    
+</table>
+<div class="divider"></div>

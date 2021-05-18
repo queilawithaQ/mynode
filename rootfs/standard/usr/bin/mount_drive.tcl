@@ -20,12 +20,16 @@ proc checkPartitionForExistingMyNodeFs {partition} {
 proc checkPartitionsForExistingMyNodeFs {partitionsName} {
     upvar $partitionsName partitions
     runCommand mkdir -p /mnt/hdd
+
+    # Check if we are skipping the check (to reformat drive)
+    if { [file exists /home/bitcoin/.mynode/force_format_prompt] } {
+        return 0
+    }
+
+    # Check each partition
     foreach partition $partitions {
         if [checkPartitionForExistingMyNodeFs $partition] {
-            # Remove this partition from the list so we don't try to
-            # use it as the config drive later on.
-            set partitions [lsearch -all -inline -not -exact $partitions $partition]
-
+            # set partitions [lsearch -all -inline -not -exact $partitions $partition]
             return 1
         }
     }
@@ -41,7 +45,13 @@ proc findBlockDevices {hardDrivesName} {
 
     foreach dev $devs {
         if [regexp "sd.*|hd.*|vd.*|nvme.*" $dev] {
-            lappend hardDrives $dev
+            # Check if drive mounted - command will fail if not mounted and get caught
+            if {[catch { exec mount | grep $dev }]} {
+                puts "Adding possible drive $dev"
+                lappend hardDrives $dev
+            } else {
+                puts "Skipping drive $dev - already mounted"
+            }
         }
     }
 }
@@ -68,13 +78,13 @@ proc createMyNodeFsOnBlockDevice {blockDevice} {
 
     if [catch {
         puts "Waiting on format confirmation..."
-        runCommand echo "drive_format_confirm" > /mnt/hdd/mynode/.mynode_status
+        runCommand echo "drive_format_confirm" > /tmp/.mynode_status
         while { [file exists "/tmp/format_ok"] == 0 } {
             after 500
         }
 
         puts "Creating new partition table on ${blockDevice}"
-        runCommand echo "drive_formatting" > /mnt/hdd/mynode/.mynode_status
+        runCommand echo "drive_formatting" > /tmp/.mynode_status
         runCommand /usr/bin/format_drive.sh ${blockDevice}
         after 5000
 
@@ -115,11 +125,12 @@ proc runCommand {args} {
 
 proc mountFileSystems {} {
     findBlockDevices hardDrives
+    set drive_count [llength $hardDrives]
+    puts "Found these $drive_count drives: ${hardDrives}"
 
-    puts "Found these harddrives: ${hardDrives}"
 
     findAllPartitionsForBlockDevices $hardDrives partitions
-    puts "Found these existing harddrive partitions: ${partitions}"
+    puts "Found these existing drive partitions: ${partitions}"
 
     if {![checkPartitionsForExistingMyNodeFs partitions]} {
         puts "No existing drive found. Creating new one."

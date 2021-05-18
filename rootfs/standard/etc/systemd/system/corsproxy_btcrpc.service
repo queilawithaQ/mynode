@@ -3,14 +3,14 @@
 
 [Unit]
 Description=corsproxy_btcrpc
-Wants=bitcoind.service
-After=bitcoind.service
+Wants=bitcoin.service
+After=bitcoin.service
 
 [Service]
 ExecStartPre=/usr/bin/is_not_shutting_down.sh
 ExecStartPre=/usr/bin/wait_on_bitcoin.sh
 WorkingDirectory=/opt/mynode/corsproxy
-Environment="CORSPROXY_PORT=8334" "CORSPROXY_HOST=0.0.0.0" "CORSPROXY_TARGET=localhost:8332" "CORSPROXY_USE_HTTPS=true" "CORSPROXY_HTTPS_KEY=/home/bitcoin/.mynode/https/myNode.local.key" "CORSPROXY_HTTPS_CERT=/home/bitcoin/.mynode/https/myNode.local.crt"
+Environment="CORSPROXY_PORT=8335" "CORSPROXY_HOST=0.0.0.0" "CORSPROXY_TARGET=localhost:8332" "CORSPROXY_USE_HTTPS=true" "CORSPROXY_HTTPS_KEY=/home/bitcoin/.mynode/https/myNode.local.key" "CORSPROXY_HTTPS_CERT=/home/bitcoin/.mynode/https/myNode.local.crt"
 ExecStart=/usr/bin/npm start
 
 User=root

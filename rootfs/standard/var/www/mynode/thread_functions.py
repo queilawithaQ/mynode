@@ -7,6 +7,7 @@ from bitcoin_info import *
 from lightning_info import *
 from device_info import *
 from enable_disable_functions import *
+from systemctl_info import *
 from electrum_info import update_electrs_info
 from requests import get
 import random
@@ -54,6 +55,9 @@ def update_device_info():
 
     # Get drive info
     try:
+        # Get throttled info (raspi only)
+        reload_throttled_data()
+
         # Get drive actual usage
         #results = subprocess.check_output(["du","-sh","/mnt/hdd/mynode/"])
         #drive_usage = results.split()[0]
@@ -88,21 +92,35 @@ def update_bitcoin_main_info_thread():
     global has_updated_btc_info
 
     try:
-        # Get bitcoin info
-        if update_bitcoin_main_info():
-            # Mark on update complete
-            has_updated_btc_info = True
+        synced = False
+        while True:
+            # Get bitcoin info
+            if update_bitcoin_main_info():
+                # Mark on update complete
+                has_updated_btc_info = True
 
-            # Calculate sync status
-            bitcoin_block_height = get_bitcoin_block_height()
-            mynode_block_height = get_mynode_block_height()
-            remaining = bitcoin_block_height - mynode_block_height
-            if remaining == 0 and bitcoin_block_height > 630000:
-                if not os.path.isfile(BITCOIN_SYNCED_FILE):
-                    open(BITCOIN_SYNCED_FILE, 'a').close() # touch file
-            elif remaining > 18:
-                if os.path.isfile(BITCOIN_SYNCED_FILE):
-                    os.remove(BITCOIN_SYNCED_FILE)
+                # Calculate sync status
+                bitcoin_block_height = get_bitcoin_block_height()
+                mynode_block_height = get_mynode_block_height()
+                remaining = bitcoin_block_height - mynode_block_height
+                if remaining == 0 and bitcoin_block_height > 680000:
+                    synced = True
+                    if not os.path.isfile(BITCOIN_SYNCED_FILE):
+                        open(BITCOIN_SYNCED_FILE, 'a').close() # touch file
+                elif remaining > 18:
+                    synced = False
+                    if os.path.isfile(BITCOIN_SYNCED_FILE):
+                        os.remove(BITCOIN_SYNCED_FILE)
+
+                # Poll slower if synced
+                if synced:
+                    time.sleep(15)
+                else:
+                    time.sleep(3)
+
+            else:
+                # Failed - try again in 10s
+                time.sleep(10)
 
     except Exception as e:
         print("CAUGHT update_bitcoin_main_info_thread EXCEPTION: " + str(e))
@@ -120,7 +138,7 @@ def update_bitcoin_other_info_thread():
 # Updates electrs info every 60 seconds
 def update_electrs_info_thread():
     try:
-        if is_electrs_enabled():
+        if is_service_enabled("electrs"):
             update_electrs_info()
     except Exception as e:
         print("CAUGHT update_electrs_info_thread EXCEPTION: " + str(e))
@@ -153,3 +171,36 @@ def find_public_ip():
 # Updated: Check ins now happen in different process. This will just restart the service to force a new check in.
 def check_in():
     os.system("systemctl restart check_in")
+
+
+def dmesg_log_clear():
+    f = open("/tmp/dmesg", "w")
+    f.write("")
+    f.close()
+def dmesg_log(msg):
+    print(msg)
+    f = open("/tmp/dmesg", "a")
+    f.write(msg)
+    f.close()
+
+# This will monitor dmesg for system errors or issues
+def monitor_dmesg():
+    dmesg_log_clear()
+    dmesg_log("Starting dmesg log monitor")
+    cmd = ["dmesg","--follow"]
+    dmesg = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    while True:
+        l = dmesg.stdout.readline()
+        try:
+            l = l.encode('utf-8', 'ignore').decode('utf-8')
+
+            #TODO: Check for things like OOM, etc...
+            if "Out of memory" in l:
+                set_oom_error(l)
+                dmesg_log(l)
+            else:
+                #dmesg_log(l)
+                pass
+        except Exception as e:
+            dmesg_log("dmesg exception: "+str(e))
+    

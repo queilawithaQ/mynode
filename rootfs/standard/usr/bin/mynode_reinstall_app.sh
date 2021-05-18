@@ -4,6 +4,7 @@ set -x
 #set -e
 
 source /usr/share/mynode/mynode_config.sh
+source /usr/share/mynode/mynode_app_versions.sh
 
 # Make sure we have an app argument
 if [ "$#" -ne 1 ]; then
@@ -16,37 +17,25 @@ APP="$1"
 /usr/bin/mynode_stop_critical_services.sh
 
 # Delete the app's version file so it will be re-installed
-if [ "$APP" = "bitcoin" ]; then
-    rm -f /home/bitcoin/.mynode/.btc_url
-elif [ "$APP" = "lnd" ]; then
-    rm -f /home/bitcoin/.mynode/.lnd_url
-elif [ "$APP" = "loopd" ]; then
-    rm -f /home/bitcoin/.mynode/.loop_url
-elif [ "$APP" = "btcrpcexplorer" ]; then
-    rm -f /home/bitcoin/.mynode/.btcrpcexplorer_url
-elif [ "$APP" = "caravan" ]; then
-    rm -f /home/bitcoin/.mynode/.caravan_url
-elif [ "$APP" = "joinmarket" ]; then
-    rm -f /home/bitcoin/.mynode/.joinmarket_url
-elif [ "$APP" = "lnbits" ]; then
-    rm -f /home/bitcoin/.mynode/.lnbits_url
-elif [ "$APP" = "lndconnect" ]; then
-    rm -f  /home/bitcoin/.mynode/.lndconnect_url
-elif [ "$APP" = "lndhub" ]; then
-    rm -f /home/bitcoin/.mynode/.lndhub_url
+rm -f /home/bitcoin/.mynode/${APP}_version || true
+rm -f /mnt/hdd/mynode/settings/${APP}_version || true
+
+# Make sure app is marked for install
+if [ -f /home/bitcoin/.mynode/${APP}_version_latest ]; then
+    touch /home/bitcoin/.mynode/install_${APP} || true
+else
+    touch /mnt/hdd/mynode/settings/install_${APP} || true
+fi
+
+# Custom re-install steps
+if [ "$APP" = "bos" ]; then
+    npm uninstall -g balanceofsatoshis
 elif [ "$APP" = "netdata" ]; then
     systemctl stop netdata
     docker rmi netdata/netdata || true
-elif [ "$APP" = "mempoolspace" ]; then
-    rm -f /mnt/hdd/mynode/settings/mempoolspace_url
-    systemctl stop mempoolspace
-    docker rmi mempoolspace
-elif [ "$APP" = "rtl" ]; then
-    rm -f /home/bitcoin/.mynode/.rtl_url
-elif [ "$APP" = "specter" ]; then
-    rm -f /home/bitcoin/.mynode/.spectre_url
-elif [ "$APP" = "thunderhub" ]; then
-    rm -f /home/bitcoin/.mynode/.thunderhub_url
+elif [ "$APP" = "btcpayserver" ]; then
+    . "/opt/mynode/btcpayserver/btcpay-env.sh" && cd "$BTCPAY_BASE_DIRECTORY" && . helpers.sh && btcpay_remove
+    cd ~
 elif [ "$APP" = "tor" ]; then
     apt-get remove -y tor
     apt-get install -y tor
@@ -54,31 +43,29 @@ elif [ "$APP" = "ufw" ]; then
     apt-get purge -y ufw
     apt-get install -y ufw
 elif [ "$APP" = "webssh2" ]; then
-    rm -f /mnt/hdd/mynode/settings/webssh2_url
+    rm -f /mnt/hdd/mynode/settings/webssh2_version
     systemctl stop webssh2
     docker rmi webssh2
-elif [ "$APP" = "whirlpool" ]; then
-    rm -f /home/bitcoin/.mynode/.whirlpool_url
 elif [ "$APP" = "dojo" ]; then
     rm -f /mnt/hdd/mynode/settings/dojo_url
-    cd /opt/mynode/dojo/docker/my-dojo/
+    rm -f /mnt/hdd/mynode/settings/mynode_dojo_install
+    cd /mnt/hdd/mynode/dojo/docker/my-dojo/
 
     # Stop and uninstall
     yes | ./dojo.sh uninstall
 
     # Reset config files
     cd ~
-    rm -rf /opt/mynode/.dojo
-    rm -rf /opt/mynode/dojo
+    rm -rf /opt/download/dojo
+    rm -rf /mnt/hdd/mynode/dojo
 else
-    echo "UNKNOWN APP: $APP"
-    exit 1
+    echo "No custom re-install steps"
 fi
 
 # Run post upgrade script
 for i in {1..3}
 do
-    /bin/bash /usr/bin/mynode_post_upgrade.sh > /home/admin/upgrade_logs/reinstall_app_${APP}_post_${i}.txt 2>&1
+    /bin/bash /usr/bin/mynode_post_upgrade.sh 2>&1 | tee /home/admin/upgrade_logs/reinstall_app_${APP}_post_${i}.txt
     RC=$?
     if [ "${RC}" -eq "0" ]; then
         rm -f $UPGRADE_ERROR_FILE

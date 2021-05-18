@@ -1,0 +1,27 @@
+# BTC RPC Explorer service
+# /etc/systemd/system/btcrpcexplorer.service
+
+[Unit]
+Description=BTC RPC Explorer
+Wants=bitcoin.service
+After=bitcoin.service
+
+[Service]
+ExecStartPre=/usr/bin/is_not_shutting_down.sh
+ExecStartPre=/usr/bin/wait_on_bitcoin.sh
+ExecStartPre=/usr/bin/wait_on_electrs.sh
+WorkingDirectory=/opt/mynode/btc-rpc-explorer
+ExecStart=/usr/bin/npm start
+
+User=bitcoin
+Group=bitcoin
+Type=simple
+TimeoutSec=120
+Restart=always
+RestartSec=60
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=btcrpcexplorer
+
+[Install]
+WantedBy=multi-user.target

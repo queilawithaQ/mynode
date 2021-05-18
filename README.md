@@ -1,3 +1,12 @@
+[![myNode](https://mynodebtc.github.io/images/logo.png)](https://github.com/mynodebtc/mynode)
+
+[![Version](https://img.shields.io/github/v/tag/mynodebtc/mynode?label=version&color=green)](https://github.com/mynodebtc/mynode/tag)
+[![Community Chat](https://img.shields.io/badge/community%20chat-telegram-blue)](https://t.me/mynode_btc)
+
+[![Twitter](https://img.shields.io/twitter/follow/mynodebtc?style=social)](https://twitter.com/mynodebtc)
+[![Reddit](https://img.shields.io/reddit/subreddit-subscribers/mynode?label=Subscribe%20%2Fr%2Fmynodebtc&style=social)](https://reddit.com/r/mynodebtc)
+
+
 # myNode
 The easiest way to run Bitcoin and Lightning!
 
@@ -6,7 +15,7 @@ myNode aims to be the easiest way to run a dedicated, easy to use, Bitcoin Node 
 Website: https://mynodebtc.com
 
 
-## GUI
+## User Interface
 ![](images/1.png)
 
 ## Overview
@@ -29,29 +38,32 @@ https://mynodebtc.com/order_now
 ## Features
 Each myNode device comes with a number of wonderful features:
 
-- Bitcoin Node (Bitcoin Core v0.20.0)
-- Lightning Node (LND v0.10.3-beta)
-- Electrum Server (Electrum Rust Server aka Electrs 0.8.5)
-- BTCPay Server (v1.0.4.4)
-- RTL (Ride the Lightning) - Lightning Wallet (v0.7.1)
-- Samourai Dojo (v1.5.0)
-- Samourai Whirlpool (whirlpool-client-cli v0.10.5)
+- Bitcoin Node (Bitcoin Core v0.20.1)
+- Lightning Node (LND v0.11.1-beta)
+- Electrum Server (Electrum Rust Server aka Electrs 0.8.6)
+- BTCPay Server (v1.0.5.9)
+- RTL (Ride the Lightning) - Lightning Wallet (v0.9.3-beta)
+- Samourai Dojo (v1.8.0)
+- Samourai Whirlpool (whirlpool-client-cli v0.10.8)
+- Specter Desktop (v0.10.4)
+- Thunderhub (v0.11.0)
 - BTC RPC Explorer (v2.0.2)
-- Mempool.Space - Mempool local visualizer for the Bitcoin blockchain (v1.0)
+- Mempool.Space - Mempool local visualizer for the Bitcoin blockchain (v1.0.1)
 - LND Hub - Lightning Wallet Server (v1.2.0)
-- Lndmanage (v0.10.0)
-- Lightning Loop - A Non-Custodial Off/On Chain Bridge (v0.6.4-beta)
+- Lndmanage (v0.11.0)
+- Lightning Loop - A Non-Custodial Off/On Chain Bridge (v0.9.0-beta)
+- Lightning Pool - A Non-Custodial auction for liquidity where bids are kept private and trades clear periodically (0.3.2-alpha)
 - LNBits (Raspiblitz version)
-- Caravan (v0.2.0)
+- Caravan (v0.3.3)
 - Tor
-- JoinMarket CLI (v0.6.2)
+- JoinMarket CLI (v0.7.0)
 - LND Connect - Generate QR Codes for connecting wallets (v0.2.0)
 - Virtual Machine support (OVA file: VirtualBox, VMWare)
 - VPN for Remote Access (OpenVPN 2.4.7)
 - Bitcoin CLI
 - QuickSync - Quickly sync Bitcoin blockchain
 - LN Channel Backup
-- Docker support (v19.03.6) (containers inside: Netdata Monitor, Glances, WebSSH2 (Linux Terminal), BTCPay Server)
+- Docker support (v19.03.13) (containers inside: Netdata Monitor, Glances, WebSSH2 (Linux Terminal), BTCPay Server)
 - Simple UI / Web Interface
 - Dark Mode interface
 - Dedicated hardware keeps you constantly and securely connected!

@@ -21,11 +21,12 @@ IS_ROCKPRO64=0
 IS_RASPI=0
 IS_RASPI3=0
 IS_RASPI4=0
+IS_RASPI4_ARM64=0
 IS_X86=0
 IS_UNKNOWN=0
 DEVICE_TYPE="unknown"
 MODEL=$(cat /proc/device-tree/model) || IS_UNKNOWN=1
-uname -a | grep amd64 && IS_X86=1 || true
+uname -a | grep amd64 && IS_X86=1 && IS_UNKNOWN=0 || true
 if [[ $MODEL == *"Rock64"* ]]; then
     IS_ARMBIAN=1
     IS_ROCK64=1
@@ -38,6 +39,10 @@ elif [[ $MODEL == *"Raspberry Pi 3"* ]]; then
 elif [[ $MODEL == *"Raspberry Pi 4"* ]]; then
     IS_RASPI=1
     IS_RASPI4=1
+    UNAME=$(uname -a)
+    if [[ $UNAME == *"aarch64"* ]]; then
+        IS_RASPI4_ARM64=1
+    fi
 fi
 
 if [ $IS_UNKNOWN = 1 ]; then
@@ -50,11 +55,23 @@ sysctl -w net.ipv6.conf.all.disable_ipv6=1
 sysctl -w net.ipv6.conf.default.disable_ipv6=1
 sysctl -w net.ipv6.conf.lo.disable_ipv6=1
 
-# Set DNS for install
-echo "" > /etc/resolv.conf
-echo "nameserver 1.1.1.1" >> /etc/resolv.conf
-echo "nameserver 9.9.9.9" >> /etc/resolv.conf
-echo "nameserver 8.8.8.8" >> /etc/resolv.conf
+# Set DNS for install (old)
+#echo "" > /etc/resolv.conf
+#echo "nameserver 1.1.1.1" >> /etc/resolv.conf
+#echo "nameserver 9.9.9.9" >> /etc/resolv.conf
+#echo "nameserver 8.8.8.8" >> /etc/resolv.conf
+
+# Set DNS for install (new)
+echo "" >> /etc/dhcp/dhclient.conf
+echo "append domain-name-servers 1.1.1.1, 208.67.222.222, 8.8.8.8;" >> /etc/dhcp/dhclient.conf
+dhclient -r
+
+# Test DNS resolution issues (may have only seen issues on bad device)
+#ping -c 2 raspberrypi.org
+#ping -c 2 raspbian.raspberrypi.org
+#ping -c 2 pythonhosted.org
+#ping -c 2 python.org
+#ping -c 2 piwheels.org
 
 
 # Make sure FS is expanded for armbian
@@ -82,30 +99,46 @@ elif [ $IS_X86 = 1 ]; then
 fi
 wget http://${SERVER_IP}:8000/${TARBALL} -O /tmp/rootfs.tar.gz
 
+# Extract rootfs (so we can reference temporary files)
+tar -xvf /tmp/rootfs.tar.gz -C /tmp/upgrade/
+TMP_INSTALL_PATH="/tmp/upgrade/out/rootfs_*"
+
+# Source file containing app versions
+source /tmp/upgrade/out/rootfs_*/usr/share/mynode/mynode_app_versions.sh
+
 
 # Create any necessary users
+useradd -m -s /bin/bash bitcoin || true
+useradd -m -s /bin/bash joinmarket || true
 
+# Setup bitcoin user folders
+mkdir -p /home/bitcoin/.mynode/
+chown bitcoin:bitcoin /home/bitcoin
+chown -R bitcoin:bitcoin /home/bitcoin/.mynode/
 
 # Update sources
 apt-get -y update
 
 # Add sources
-apt-get -y install apt-transport-https
+apt-get -y install apt-transport-https curl gnupg
 DEBIAN_VERSION=$(lsb_release -c | awk '{ print $2 }')
 # Tor
 grep -qxF "deb https://deb.torproject.org/torproject.org ${DEBIAN_VERSION} main" /etc/apt/sources.list  || echo "deb https://deb.torproject.org/torproject.org ${DEBIAN_VERSION} main" >> /etc/apt/sources.list
 grep -qxF "deb-src https://deb.torproject.org/torproject.org ${DEBIAN_VERSION} main" /etc/apt/sources.list  || echo "deb-src https://deb.torproject.org/torproject.org ${DEBIAN_VERSION} main" >> /etc/apt/sources.list
 # Raspbian mirrors
-if [ $IS_RASPI = 1 ]; then
-    grep -qxF "deb http://plug-mirror.rcac.purdue.edu/raspbian/ ${DEBIAN_VERSION} main" /etc/apt/sources.list  || echo "deb http://plug-mirror.rcac.purdue.edu/raspbian/ ${DEBIAN_VERSION} main" >> /etc/apt/sources.list
-    grep -qxF "deb http://mirrors.ocf.berkeley.edu/raspbian/raspbian ${DEBIAN_VERSION} main" /etc/apt/sources.list  || echo "deb http://mirrors.ocf.berkeley.edu/raspbian/raspbian ${DEBIAN_VERSION} main" >> /etc/apt/sources.list
-fi
+# if [ $IS_RASPI = 1 ]; then
+#     grep -qxF "deb http://plug-mirror.rcac.purdue.edu/raspbian/ ${DEBIAN_VERSION} main" /etc/apt/sources.list  || echo "deb http://plug-mirror.rcac.purdue.edu/raspbian/ ${DEBIAN_VERSION} main" >> /etc/apt/sources.list
+#     grep -qxF "deb http://mirrors.ocf.berkeley.edu/raspbian/raspbian ${DEBIAN_VERSION} main" /etc/apt/sources.list  || echo "deb http://mirrors.ocf.berkeley.edu/raspbian/raspbian ${DEBIAN_VERSION} main" >> /etc/apt/sources.list
+# fi
 
 # Import Keys
 curl https://keybase.io/roasbeef/pgp_keys.asc | gpg --import
+curl https://keybase.io/bitconner/pgp_keys.asc | gpg --import
+curl https://keybase.io/guggero/pgp_keys.asc | gpg --import # Pool
 curl https://raw.githubusercontent.com/JoinMarket-Org/joinmarket-clientserver/master/pubkeys/AdamGibson.asc | gpg --import
 gpg --keyserver hkp://keyserver.ubuntu.com --recv-keys 01EA5486DE18A882D4C2684590C8019E36C2E964
 curl https://keybase.io/suheb/pgp_keys.asc | gpg --import
+curl https://samouraiwallet.com/pgp.txt | gpg --import # two keys from Samourai team
 gpg  --keyserver hkps://keyserver.ubuntu.com --recv-keys DE23E73BFA8A0AD5587D2FCDE80D2F3F311FD87E #loopd
 curl https://deb.torproject.org/torproject.org/A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89.asc | gpg --import  # tor
 gpg --export A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89 | apt-key add -                                       # tor
@@ -114,27 +147,40 @@ gpg --export A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89 | apt-key add -           
 # Update OS
 apt -y update # Needed to accept new repos
 apt-get -y update
+
+# Freeze any packages we don't want to update
+if [ $IS_X86 = 1 ]; then
+    apt-mark hold grub*
+fi
+apt-mark hold redis-server
+
+# Upgrade packages
 apt-get -y upgrade
 
 # Install other tools (run section multiple times to make sure success)
 export DEBIAN_FRONTEND=noninteractive
 apt-get -y install apt-transport-https
 apt-get -y install htop git curl bash-completion jq dphys-swapfile lsof libzmq3-dev
-apt-get -y install build-essential python-dev python-pip python3-dev python3-pip 
+apt-get -y install build-essential python-dev python-pip python3-dev python3-pip
 apt-get -y install transmission-cli fail2ban ufw tclsh bluez python-bluez redis-server
 #apt-get -y install mongodb-org
 apt-get -y install clang hitch zlib1g-dev libffi-dev file toilet ncdu
-apt-get -y install toilet-fonts avahi-daemon figlet libsecp256k1-dev 
+apt-get -y install toilet-fonts avahi-daemon figlet libsecp256k1-dev
 apt-get -y install inotify-tools libssl-dev tor tmux screen fonts-dejavu
 apt-get -y install python-grpcio python3-grpcio
 apt-get -y install pv sysstat network-manager rsync parted unzip pkg-config
-apt-get -y install libfreetype6-dev libpng-dev libatlas-base-dev libgmp-dev libltdl-dev 
+apt-get -y install libfreetype6-dev libpng-dev libatlas-base-dev libgmp-dev libltdl-dev
 apt-get -y install libffi-dev libssl-dev glances python3-bottle automake libtool libltdl7
 apt -y -qq install apt-transport-https ca-certificates
 apt-get -y install xorg chromium openbox lightdm openjdk-11-jre libevent-dev ncurses-dev
 apt-get -y install zlib1g-dev libudev-dev libusb-1.0-0-dev python3-venv gunicorn
-apt-get -y install libsqlite3-dev torsocks python3-requests
+apt-get -y install sqlite3 libsqlite3-dev torsocks python3-requests libsystemd-dev
+apt-get -y install libjpeg-dev zlib1g-dev psmisc hexyl libbz2-dev liblzma-dev
 
+# Install device specific packages
+if [ $IS_X86 = 1 ]; then
+    apt-get -y install cloud-init
+fi
 
 # Make sure some software is removed
 apt-get -y purge ntp # (conflicts with systemd-timedatectl)
@@ -149,14 +195,16 @@ apt-get -y install --no-install-recommends expect
 mkdir -p /var/log/nginx
 $TORIFY apt-get -y install nginx || true
 # Install may fail, so we need to edit the default config file and reconfigure
+rm -f /etc/nginx/modules-enabled/50-mod-* || true
 echo "" > /etc/nginx/sites-available/default
 dpkg --configure -a
 
 
-# Add bitcoin users
-useradd -m -s /bin/bash bitcoin || true
+# Update users
 usermod -a -G debian-tor bitcoin
 
+# Make admin a member of bitcoin
+adduser admin bitcoin
 
 # Install pip packages
 pip2 install setuptools
@@ -165,12 +213,12 @@ pip2 install wheel
 pip2 install --upgrade wheel
 pip2 install speedtest-cli transmissionrpc flask python-bitcoinrpc redis prometheus_client requests
 pip2 install python-pam python-bitcoinlib psutil
-pip2 install grpcio grpcio-tools googleapis-common-protos 
-pip2 install tzupdate virtualenv pysocks
+pip2 install grpcio grpcio-tools googleapis-common-protos
+pip2 install tzupdate virtualenv pysocks redis qrcode image subprocess32
 
 
 # Update Python3 to 3.7.X
-PYTHON_VERSION=3.7.7
+PYTHON_VERSION=3.7.9
 CURRENT_PYTHON3_VERSION=$(python3 --version)
 if [[ "$CURRENT_PYTHON3_VERSION" != *"Python ${PYTHON_VERSION}"* ]]; then
     mkdir -p /opt/download
@@ -191,13 +239,15 @@ fi
 
 
 # Install Python3 specific tools (run multiple times to make sure success)
-pip3 install wheel setuptools
+pip3 install --upgrade pip wheel setuptools
 pip3 install bitstring lnd-grpc pycoin aiohttp connectrum python-bitcoinlib
 pip3 install gnureadline
-pip3 install lndmanage==0.10.0   # Install LND Manage (keep up to date with LND)
+pip3 install lndmanage==0.11.0   # Install LND Manage (keep up to date with LND)
 pip3 install docker-compose
 pip3 install pipenv
 pip3 install pysocks
+pip3 install redis
+pip3 install systemd
 
 
 # Install Rust
@@ -239,26 +289,27 @@ rm -rf /etc/update-motd.d/*
 
 
 # Install Bitcoin
-BTC_VERSION="0.20.0"
 ARCH="UNKNOWN"
 if [ $IS_RASPI = 1 ]; then
     ARCH="arm-linux-gnueabihf"
+    if [ $IS_RASPI4_ARM64 = 1 ]; then
+        ARCH="aarch64-linux-gnu"
+    fi
 elif [ $IS_ROCK64 = 1 ] || [ $IS_ROCKPRO64 = 1 ]; then
     ARCH="aarch64-linux-gnu"
 elif [ $IS_X86 = 1 ]; then
-    ARCH="x86_64-linux-gnu" 
+    ARCH="x86_64-linux-gnu"
 else
     echo "Unknown Bitcoin Version"
     exit 1
 fi
 BTC_UPGRADE_URL=https://bitcoincore.org/bin/bitcoin-core-$BTC_VERSION/bitcoin-$BTC_VERSION-$ARCH.tar.gz
-BTC_UPGRADE_URL_FILE=/home/bitcoin/.mynode/.btc_url
 BTC_UPGRADE_SHA256SUM_URL=https://bitcoincore.org/bin/bitcoin-core-$BTC_VERSION/SHA256SUMS.asc
 CURRENT=""
-if [ -f $BTC_UPGRADE_URL_FILE ]; then
-    CURRENT=$(cat $BTC_UPGRADE_URL_FILE)
+if [ -f $BTC_VERSION_FILE ]; then
+    CURRENT=$(cat $BTC_VERSION_FILE)
 fi
-if [ "$CURRENT" != "$BTC_UPGRADE_URL" ]; then
+if [ "$CURRENT" != "$BTC_VERSION" ]; then
     # Download and install Bitcoin
     rm -rf /opt/download
     mkdir -p /opt/download
@@ -274,6 +325,7 @@ if [ "$CURRENT" != "$BTC_UPGRADE_URL" ]; then
     tar -xvf bitcoin-$BTC_VERSION-$ARCH.tar.gz
     mv bitcoin-$BTC_VERSION bitcoin
     install -m 0755 -o root -g root -t /usr/local/bin bitcoin/bin/*
+    
     if [ ! -L /home/bitcoin/.bitcoin ]; then
         sudo -u bitcoin ln -s /mnt/hdd/mynode/bitcoin /home/bitcoin/.bitcoin
     fi
@@ -281,74 +333,68 @@ if [ "$CURRENT" != "$BTC_UPGRADE_URL" ]; then
         sudo -u bitcoin ln -s /mnt/hdd/mynode/lnd /home/bitcoin/.lnd
     fi
     mkdir -p /home/admin/.bitcoin
-    mkdir -p /home/bitcoin/.mynode/
-    chown -R bitcoin:bitcoin /home/bitcoin/.mynode/
-    echo $BTC_UPGRADE_URL > $BTC_UPGRADE_URL_FILE
+    echo $BTC_VERSION > $BTC_VERSION_FILE
 fi
 cd ~
 
 # Install Lightning
-LND_VERSION="v0.10.3-beta"
 LND_ARCH="lnd-linux-armv7"
 if [ $IS_X86 = 1 ]; then
     LND_ARCH="lnd-linux-amd64"
 fi
-LND_UPGRADE_URL=https://github.com/lightningnetwork/lnd/releases/download/$LND_VERSION/$LND_ARCH-$LND_VERSION.tar.gz
-LND_UPGRADE_URL_FILE=/home/bitcoin/.mynode/.lnd_url
-LND_UPGRADE_MANIFEST_URL=https://github.com/lightningnetwork/lnd/releases/download/$LND_VERSION/manifest-$LND_VERSION.txt
-LND_UPGRADE_MANIFEST_SIG_URL=https://github.com/lightningnetwork/lnd/releases/download/$LND_VERSION/manifest-$LND_VERSION.txt.sig
-CURRENT=""
-if [ -f $LND_UPGRADE_URL_FILE ]; then
-    CURRENT=$(cat $LND_UPGRADE_URL_FILE)
+if [ $IS_RASPI4_ARM64 = 1 ]; then
+    LND_ARCH="lnd-linux-arm64"
 fi
-if [ "$CURRENT" != "$LND_UPGRADE_URL" ]; then
+LND_UPGRADE_URL=https://github.com/lightningnetwork/lnd/releases/download/$LND_VERSION/$LND_ARCH-$LND_VERSION.tar.gz
+CURRENT=""
+if [ -f $LND_VERSION_FILE ]; then
+    CURRENT=$(cat $LND_VERSION_FILE)
+fi
+if [ "$CURRENT" != "$LND_VERSION" ]; then
     rm -rf /opt/download
     mkdir -p /opt/download
     cd /opt/download
 
     wget $LND_UPGRADE_URL
-    wget $LND_UPGRADE_MANIFEST_URL
-    wget $LND_UPGRADE_MANIFEST_SIG_URL
+    wget $LND_UPGRADE_MANIFEST_URL -O manifest.txt
+    wget $LND_UPGRADE_MANIFEST_SIG_URL -O manifest.txt.sig
 
-    gpg --verify manifest-*.txt.sig
+    gpg --verify manifest.txt.sig manifest.txt
 
     tar -xzf lnd-*.tar.gz
     mv $LND_ARCH-$LND_VERSION lnd
     install -m 0755 -o root -g root -t /usr/local/bin lnd/*
     ln -s /bin/ip /usr/bin/ip || true
 
-    mkdir -p /home/bitcoin/.mynode/
-    chown -R bitcoin:bitcoin /home/bitcoin/.mynode/
-    echo $LND_UPGRADE_URL > $LND_UPGRADE_URL_FILE
+    echo $LND_VERSION > $LND_VERSION_FILE
 fi
 cd ~
 
-# Install Loopd
-echo "Installing loopd..."
-LOOP_VERSION="v0.6.4-beta"
+# Install Loop
+echo "Installing loop..."
 LOOP_ARCH="loop-linux-armv7"
 if [ $IS_X86 = 1 ]; then
     LOOP_ARCH="loop-linux-amd64"
 fi
-LOOP_UPGRADE_URL=https://github.com/lightninglabs/loop/releases/download/$LOOP_VERSION/$LOOP_ARCH-$LOOP_VERSION.tar.gz
-LOOP_UPGRADE_URL_FILE=/home/bitcoin/.mynode/.loop_url
-LOOP_UPGRADE_MANIFEST_URL=https://github.com/lightninglabs/loop/releases/download/$LOOP_VERSION/manifest-$LOOP_VERSION.txt
-LOOP_UPGRADE_MANIFEST_SIG_URL=https://github.com/lightninglabs/loop/releases/download/$LOOP_VERSION/manifest-$LOOP_VERSION.txt.sig
-CURRENT=""
-if [ -f $LOOP_UPGRADE_URL_FILE ]; then
-    CURRENT=$(cat $LOOP_UPGRADE_URL_FILE)
+if [ $IS_RASPI4_ARM64 = 1 ]; then
+    LOOP_ARCH="loop-linux-arm64"
 fi
-if [ "$CURRENT" != "$LOOP_UPGRADE_URL" ]; then
+LOOP_UPGRADE_URL=https://github.com/lightninglabs/loop/releases/download/$LOOP_VERSION/$LOOP_ARCH-$LOOP_VERSION.tar.gz
+CURRENT=""
+if [ -f $LOOP_VERSION_FILE ]; then
+    CURRENT=$(cat $LOOP_VERSION_FILE)
+fi
+if [ "$CURRENT" != "$LOOP_VERSION" ]; then
     # Download and install Loop
     rm -rf /opt/download
     mkdir -p /opt/download
     cd /opt/download
 
     wget $LOOP_UPGRADE_URL
-    wget $LOOP_UPGRADE_MANIFEST_URL
-    wget $LOOP_UPGRADE_MANIFEST_SIG_URL
+    wget $LOOP_UPGRADE_MANIFEST_URL -O manifest.txt
+    wget $LOOP_UPGRADE_MANIFEST_SIG_URL -O manifest.txt.sig
 
-    gpg --verify manifest-*.txt.sig
+    gpg --verify manifest.txt.sig manifest.txt
     if [ $? == 0 ]; then
         # Install Loop
         tar -xzf loop-*.tar.gz
@@ -356,11 +402,88 @@ if [ "$CURRENT" != "$LOOP_UPGRADE_URL" ]; then
         install -m 0755 -o root -g root -t /usr/local/bin loop/*
 
         # Mark current version
-        echo $LOOP_UPGRADE_URL > $LOOP_UPGRADE_URL_FILE
+        echo $LOOP_VERSION > $LOOP_VERSION_FILE
     else
         echo "ERROR UPGRADING LND - GPG FAILED"
     fi
 fi
+
+# Install Pool
+echo "Installing pool..."
+POOL_ARCH="pool-linux-armv7"
+if [ $IS_X86 = 1 ]; then
+    POOL_ARCH="pool-linux-amd64"
+fi
+if [ $IS_RASPI4_ARM64 = 1 ]; then
+    POOL_ARCH="pool-linux-arm64"
+fi
+POOL_UPGRADE_URL=https://github.com/lightninglabs/pool/releases/download/$POOL_VERSION/$POOL_ARCH-$POOL_VERSION.tar.gz
+CURRENT=""
+if [ -f $POOL_VERSION_FILE ]; then
+    CURRENT=$(cat $POOL_VERSION_FILE)
+fi
+if [ "$CURRENT" != "$POOL_VERSION" ]; then
+    # Download and install pool
+    rm -rf /opt/download
+    mkdir -p /opt/download
+    cd /opt/download
+
+    wget $POOL_UPGRADE_URL
+    wget $POOL_UPGRADE_MANIFEST_URL -O manifest.txt
+    wget $POOL_UPGRADE_MANIFEST_SIG_URL -O manifest.txt.sig
+
+    gpg --verify manifest.txt.sig manifest.txt
+    if [ $? == 0 ]; then
+        # Install Pool
+        tar -xzf pool-*.tar.gz
+        mv $POOL_ARCH-$POOL_VERSION pool
+        install -m 0755 -o root -g root -t /usr/local/bin pool/*
+
+        # Mark current version
+        echo $POOL_VERSION > $POOL_VERSION_FILE
+    else
+        echo "ERROR UPGRADING POOL - GPG FAILED"
+    fi
+fi
+
+# Install Lightning Terminal
+echo "Installing lit..."
+LIT_ARCH="lightning-terminal-linux-armv7"
+if [ $IS_X86 = 1 ]; then
+    LIT_ARCH="lightning-terminal-linux-amd64"
+fi
+if [ $IS_RASPI4_ARM64 = 1 ]; then
+    LIT_ARCH="lightning-terminal-linux-arm64"
+fi
+LIT_UPGRADE_URL=https://github.com/lightninglabs/lightning-terminal/releases/download/$LIT_VERSION/$LIT_ARCH-$LIT_VERSION.tar.gz
+CURRENT=""
+if [ -f $LIT_VERSION_FILE ]; then
+    CURRENT=$(cat $LIT_VERSION_FILE)
+fi
+if [ "$CURRENT" != "$LIT_VERSION" ]; then
+    # Download and install lit
+    rm -rf /opt/download
+    mkdir -p /opt/download
+    cd /opt/download
+
+    wget $LIT_UPGRADE_URL
+    wget $LIT_UPGRADE_MANIFEST_URL -O manifest.txt
+    wget $LIT_UPGRADE_MANIFEST_SIG_URL  -O manifest.txt.sig
+
+    gpg --verify manifest.txt.sig manifest.txt
+    if [ $? == 0 ]; then
+        # Install lit
+        tar -xzf lightning-terminal-*.tar.gz
+        mv $LIT_ARCH-$LIT_VERSION lightning-terminal
+        install -m 0755 -o root -g root -t /usr/local/bin lightning-terminal/lit*
+
+        # Mark current version
+        echo $LIT_VERSION > $LIT_VERSION_FILE
+    else
+        echo "ERROR UPGRADING LIT - GPG FAILED"
+    fi
+fi
+cd ~
 
 
 # Setup "install" location for some apps
@@ -369,14 +492,12 @@ chown -R bitcoin:bitcoin /opt/mynode
 
 
 # Install LND Hub
-LNDHUB_VERSION="v1.2.0"
-LNDHUB_UPGRADE_URL=https://github.com/BlueWallet/LndHub/archive/${LNDHUB_VERSION}.tar.gz
-LNDHUB_UPGRADE_URL_FILE=/home/bitcoin/.mynode/.lndhub_url
+LNDHUB_UPGRADE_URL=https://github.com/BlueWallet/LndHub/archive/$LNDHUB_VERSION.tar.gz
 CURRENT=""
-if [ -f $LNDHUB_UPGRADE_URL_FILE ]; then
-    CURRENT=$(cat $LNDHUB_UPGRADE_URL_FILE)
+if [ -f $LNDHUB_VERSION_FILE ]; then
+    CURRENT=$(cat $LNDHUB_VERSION_FILE)
 fi
-if [ "$CURRENT" != "$LNDHUB_UPGRADE_URL" ]; then
+if [ "$CURRENT" != "$LNDHUB_VERSION" ]; then
     cd /opt/mynode
     rm -rf LndHub
 
@@ -390,68 +511,80 @@ if [ "$CURRENT" != "$LNDHUB_UPGRADE_URL" ]; then
     sudo -u bitcoin npm install --only=production
     sudo -u bitcoin ln -s /home/bitcoin/.lnd/tls.cert tls.cert
     sudo -u bitcoin ln -s /home/bitcoin/.lnd/data/chain/bitcoin/mainnet/admin.macaroon admin.macaroon
-    echo $LNDHUB_UPGRADE_URL > $LNDHUB_UPGRADE_URL_FILE
+    echo $LNDHUB_VERSION > $LNDHUB_VERSION_FILE
 fi
 cd ~
 
 # Install Caravan
-CARAVAN_VERSION="v0.2.0"
-CARAVAN_UPGRADE_URL=https://github.com/unchained-capital/caravan/archive/${CARAVAN_VERSION}.tar.gz
-CARAVAN_UPGRADE_URL_FILE=/home/bitcoin/.mynode/.caravan_url
+CARAVAN_UPGRADE_URL=https://github.com/unchained-capital/caravan/archive/$CARAVAN_VERSION.tar.gz
 CURRENT=""
-if [ -f $CARAVAN_UPGRADE_URL_FILE ]; then
-    CURRENT=$(cat $CARAVAN_UPGRADE_URL_FILE)
+if [ -f $CARAVAN_VERSION_FILE ]; then
+    CURRENT=$(cat $CARAVAN_VERSION_FILE)
 fi
-if [ "$CURRENT" != "$CARAVAN_UPGRADE_URL" ]; then
+if [ "$CURRENT" != "$CARAVAN_VERSION" ] || [ ! -f $CARAVAN_SETTINGS_UPDATE_FILE ]; then
     cd /opt/mynode
     rm -rf caravan
 
     rm -f caravan.tar.gz
     wget $CARAVAN_UPGRADE_URL -O caravan.tar.gz
-    tar -xzf caravan.tar.gz 
+    tar -xzf caravan.tar.gz
     rm -f caravan.tar.gz
     mv caravan-* caravan
     chown -R bitcoin:bitcoin caravan
 
     cd caravan
     sudo -u bitcoin npm install --only=production
-    echo $CARAVAN_UPGRADE_URL > $CARAVAN_UPGRADE_URL_FILE
+    echo $CARAVAN_VERSION > $CARAVAN_VERSION_FILE
+    touch $CARAVAN_SETTINGS_UPDATE_FILE
 fi
 cd ~
 
 
 # Install cors proxy (my fork)
-CORSPROXY_UPGRADE_URL=https://github.com/tehelsper/CORS-Proxy/archive/v1.7.0.tar.gz
-CORSPROXY_UPGRADE_URL_FILE=/home/bitcoin/.mynode/.corsproxy_url
+CORSPROXY_UPGRADE_URL=https://github.com/tehelsper/CORS-Proxy/archive/$CORSPROXY_VERSION.tar.gz
 CURRENT=""
-if [ -f $CORSPROXY_UPGRADE_URL ]; then
-    CURRENT=$(cat $CORSPROXY_UPGRADE_URL_FILE)
+if [ -f $CORSPROXY_VERSION_FILE ]; then
+    CURRENT=$(cat $CORSPROXY_VERSION_FILE)
 fi
-if [ "$CURRENT" != "$CORSPROXY_UPGRADE_URL" ]; then
+if [ "$CURRENT" != "$CORSPROXY_VERSION" ]; then
     cd /opt/mynode
     rm -rf corsproxy
 
     rm -f corsproxy.tar.gz
     wget $CORSPROXY_UPGRADE_URL -O corsproxy.tar.gz
-    tar -xzf corsproxy.tar.gz 
+    tar -xzf corsproxy.tar.gz
     rm -f corsproxy.tar.gz
     mv CORS-* corsproxy
 
     cd corsproxy
     npm install
-    echo $CORSPROXY_UPGRADE_URL > $CORSPROXY_UPGRADE_URL_FILE
+    echo $CORSPROXY_VERSION > $CORSPROXY_VERSION_FILE
 fi
 cd ~
 
 
 # Install Electrs (only build to save new version, now included in overlay)
-#cd /home/admin/download
-#wget https://github.com/romanz/electrs/archive/v0.7.0.tar.gz
-#tar -xvf v0.7.0.tar.gz 
-#cd electrs-0.7.0
-#cargo build --release
-#sudo install -g root -o root target/release/electrs /usr/bin/electrs
-#cd ~
+# ELECTRS_UPGRADE_URL=https://github.com/romanz/electrs/archive/$ELECTRS_VERSION.tar.gz
+# CURRENT=""
+# if [ -f $ELECTRS_VERSION_FILE ]; then
+#     CURRENT=$(cat $ELECTRS_VERSION_FILE)
+# fi
+# if [ "$CURRENT" != "$ELECTRS_VERSION" ]; then
+#     cd /opt/mynode
+#     rm -rf electrs
+
+#     rm -f electrs.tar.gz
+#     wget $ELECTRS_UPGRADE_URL -O electrs.tar.gz
+#     tar -xzf electrs.tar.gz
+#     rm -f electrs.tar.gz
+#     mv electrs-* electrs
+
+#     cd electrs
+#     cargo build --release
+#     install -g root -o root target/release/electrs /usr/bin/electrs
+#     echo $ELECTRS_VERSION > $ELECTRS_VERSION_FILE
+# fi
+# cd ~
 
 
 # Install recent version of secp256k1
@@ -469,63 +602,64 @@ if [ ! -f /usr/include/secp256k1_ecdh.h ]; then
     cp -f include/* /usr/include/
 fi
 
-# Install JoinMarket
-echo "Install JoinMarket..."
+echo "Installing JoinInBox..."
 if [ $IS_RASPI = 1 ] || [ $IS_X86 = 1 ]; then
-    JOINMARKET_VERSION=v0.6.2
-    JOINMARKET_UPGRADE_URL=https://github.com/JoinMarket-Org/joinmarket-clientserver/archive/$JOINMARKET_VERSION.tar.gz
-    JOINMARKET_UPGRADE_URL_FILE=/home/bitcoin/.mynode/.joinmarket_version
+    JOININBOX_UPGRADE_URL=https://github.com/openoms/joininbox/archive/$JOININBOX_VERSION.tar.gz
     CURRENT=""
-    if [ -f $JOINMARKET_UPGRADE_URL_FILE ]; then
-        CURRENT=$(cat $JOINMARKET_UPGRADE_URL_FILE)
+    if [ -f $JOININBOX_VERSION_FILE ]; then
+        CURRENT=$(cat $JOININBOX_VERSION_FILE)
     fi
-    if [ "$CURRENT" != "$JOINMARKET_VERSION" ]; then
-        # Download and build JoinMarket
-        cd /opt/mynode
-        rm -rf joinmarket-clientserver
-
-        sudo -u bitcoin wget $JOINMARKET_UPGRADE_URL -O joinmarket.tar.gz
-        sudo -u bitcoin tar -xvf joinmarket.tar.gz
-        sudo -u bitcoin rm joinmarket.tar.gz
-        mv joinmarket-clientserver-* joinmarket-clientserver
+    if [ "$CURRENT" != "$JOININBOX_VERSION" ]; then
+        # Download and build JoinInBox
+        cd /home/joinmarket
         
-        cd joinmarket-clientserver
-        yes | ./install.sh --without-qt
+        # Delete all non-hidden files
+        rm -rf *
+        rm -rf joininbox-*
 
-        echo $JOINMARKET_VERSION > $JOINMARKET_UPGRADE_URL_FILE
+        sudo -u joinmarket wget $JOININBOX_UPGRADE_URL -O joininbox.tar.gz
+        sudo -u joinmarket tar -xvf joininbox.tar.gz
+        sudo -u joinmarket rm joininbox.tar.gz
+        mv joininbox-* joininbox
+
+        chmod -R +x ./joininbox/
+        sudo -u joinmarket cp -rf ./joininbox/scripts/* .
+
+        echo $JOININBOX_VERSION > $JOININBOX_VERSION_FILE
     fi
 fi
 
 # Install Whirlpool
-WHIRLPOOL_UPGRADE_URL=https://github.com/Samourai-Wallet/whirlpool-client-cli/releases/download/0.10.5/whirlpool-client-cli-0.10.5-run.jar
-WHIRLPOOL_UPGRADE_URL_FILE=/home/bitcoin/.mynode/.whirlpool_url
+WHIRLPOOL_UPGRADE_URL=https://code.samourai.io/whirlpool/whirlpool-client-cli/uploads/$WHIRLPOOL_UPLOAD_FILE_ID/whirlpool-client-cli-$WHIRLPOOL_VERSION-run.jar
+WHIRLPOOL_SIG_URL=https://code.samourai.io/whirlpool/whirlpool-client-cli/uploads/$WHIRLPOOL_UPLOAD_SIG_ID/whirlpool-client-cli-$WHIRLPOOL_VERSION-run.jar.sig.asc
 CURRENT=""
-if [ -f $WHIRLPOOL_UPGRADE_URL_FILE ]; then
-    CURRENT=$(cat $WHIRLPOOL_UPGRADE_URL_FILE)
+if [ -f $WHIRLPOOL_VERSION_FILE ]; then
+    CURRENT=$(cat $WHIRLPOOL_VERSION_FILE)
 fi
-if [ "$CURRENT" != "$WHIRLPOOL_UPGRADE_URL" ]; then
+if [ "$CURRENT" != "$WHIRLPOOL_VERSION" ]; then
     sudo -u bitcoin mkdir -p /opt/mynode/whirlpool
     cd /opt/mynode/whirlpool
     sudo rm -rf *.jar
     sudo -u bitcoin wget -O whirlpool.jar $WHIRLPOOL_UPGRADE_URL
-    
-    echo $WHIRLPOOL_UPGRADE_URL > $WHIRLPOOL_UPGRADE_URL_FILE
+
+    wget -O whirlpool.asc $WHIRLPOOL_SIG_URL
+    gpg --verify whirlpool.asc
+
+    echo $WHIRLPOOL_VERSION > $WHIRLPOOL_VERSION_FILE
 fi
 
 
 # Install RTL
-RTL_VERSION="v0.8.3"
 RTL_UPGRADE_URL=https://github.com/Ride-The-Lightning/RTL/archive/$RTL_VERSION.tar.gz
 RTL_UPGRADE_ASC_URL=https://github.com/Ride-The-Lightning/RTL/releases/download/$RTL_VERSION/$RTL_VERSION.tar.gz.asc
-RTL_UPGRADE_URL_FILE=/home/bitcoin/.mynode/.rtl_url
 CURRENT=""
-if [ -f $RTL_UPGRADE_URL_FILE ]; then
-    CURRENT=$(cat $RTL_UPGRADE_URL_FILE)
+if [ -f $RTL_VERSION_FILE ]; then
+    CURRENT=$(cat $RTL_VERSION_FILE)
 fi
-if [ "$CURRENT" != "$RTL_UPGRADE_URL" ]; then
+if [ "$CURRENT" != "$RTL_VERSION" ]; then
     cd /opt/mynode
     rm -rf RTL
-    
+
     sudo -u bitcoin wget $RTL_UPGRADE_URL -O RTL.tar.gz
     #sudo -u bitcoin wget $RTL_UPGRADE_ASC_URL -O RTL.tar.gz.asc
 
@@ -536,21 +670,18 @@ if [ "$CURRENT" != "$RTL_UPGRADE_URL" ]; then
     sudo -u bitcoin mv RTL-* RTL
     cd RTL
     sudo -u bitcoin NG_CLI_ANALYTICS=false npm install --only=production
-    
-    mkdir -p /home/bitcoin/.mynode/
-    chown -R bitcoin:bitcoin /home/bitcoin/.mynode/
-    echo $RTL_UPGRADE_URL > $RTL_UPGRADE_URL_FILE
+
+    echo $RTL_VERSION > $RTL_VERSION_FILE
 fi
 
 
 # Install BTC RPC Explorer
-BTCRPCEXPLORER_UPGRADE_URL=https://github.com/janoside/btc-rpc-explorer/archive/v2.0.2.tar.gz
-BTCRPCEXPLORER_UPGRADE_URL_FILE=/home/bitcoin/.mynode/.btcrpcexplorer_url
+BTCRPCEXPLORER_UPGRADE_URL=https://github.com/janoside/btc-rpc-explorer/archive/$BTCRPCEXPLORER_VERSION.tar.gz
 CURRENT=""
-if [ -f $BTCRPCEXPLORER_UPGRADE_URL_FILE ]; then
-    CURRENT=$(cat $BTCRPCEXPLORER_UPGRADE_URL_FILE)
+if [ -f $BTCRPCEXPLORER_VERSION_FILE ]; then
+    CURRENT=$(cat $BTCRPCEXPLORER_VERSION_FILE)
 fi
-if [ "$CURRENT" != "$BTCRPCEXPLORER_UPGRADE_URL" ]; then
+if [ "$CURRENT" != "$BTCRPCEXPLORER_VERSION" ]; then
     cd /opt/mynode
     rm -rf btc-rpc-explorer
     sudo -u bitcoin wget $BTCRPCEXPLORER_UPGRADE_URL -O btc-rpc-explorer.tar.gz
@@ -560,20 +691,18 @@ if [ "$CURRENT" != "$BTCRPCEXPLORER_UPGRADE_URL" ]; then
     cd btc-rpc-explorer
     sudo -u bitcoin npm install --only=production
 
-    mkdir -p /home/bitcoin/.mynode/
-    chown -R bitcoin:bitcoin /home/bitcoin/.mynode/
-    echo $BTCRPCEXPLORER_UPGRADE_URL > $BTCRPCEXPLORER_UPGRADE_URL_FILE
+    echo $BTCRPCEXPLORER_VERSION > $BTCRPCEXPLORER_VERSION_FILE
 fi
 
 
 # Install LNBits
-LNBITS_UPGRADE_URL=https://github.com/lnbits/lnbits/archive/raspiblitz.tar.gz
-LNBITS_UPGRADE_URL_FILE=/home/bitcoin/.mynode/.lnbits_url
+# Find URL by going to https://github.com/lnbits/lnbits/releases and finding the exact commit for the mynode tag
+LNBITS_UPGRADE_URL=https://github.com/lnbits/lnbits/archive/$LNBITS_VERSION.tar.gz
 CURRENT=""
-if [ -f $LNBITS_UPGRADE_URL_FILE ]; then
-    CURRENT=$(cat $LNBITS_UPGRADE_URL_FILE)
+if [ -f $LNBITS_VERSION_FILE ]; then
+    CURRENT=$(cat $LNBITS_VERSION_FILE)
 fi
-if [ "$CURRENT" != "$LNBITS_UPGRADE_URL" ]; then
+if [ "$CURRENT" != "$LNBITS_VERSION" ]; then
     cd /opt/mynode
     rm -rf lnbits
     sudo -u bitcoin wget $LNBITS_UPGRADE_URL -O lnbits.tar.gz
@@ -583,30 +712,25 @@ if [ "$CURRENT" != "$LNBITS_UPGRADE_URL" ]; then
     cd lnbits
 
     # Copy over config file
-    #cp /usr/share/mynode/lnbits.env /opt/mynode/lnbits/.env
-    #chown bitcoin:bitcoin /opt/mynode/lnbits/.env
+    cp $TMP_INSTALL_PATH/usr/share/mynode/lnbits.env /opt/mynode/lnbits/.env
+    chown bitcoin:bitcoin /opt/mynode/lnbits/.env
 
-    # Install with python 3.7 (Only use "pipenv install --python 3.7" once or it will rebuild the venv!)
-    sudo -u bitcoin pipenv --python 3.7 install
-    sudo -u bitcoin pipenv run pip install python-dotenv
-    sudo -u bitcoin pipenv run pip install -r requirements.txt
-    #sudo -u bitcoin pipenv run pip install lnd-grpc # Using REST now (this install takes a LONG time)
-    sudo -u bitcoin pipenv run flask migrate || true
+    # Install lnbits
+    sudo -u bitcoin python3 -m venv lnbits_venv
+    sudo -u bitcoin ./lnbits_venv/bin/pip install -r requirements.txt
+    sudo -u bitcoin ./lnbits_venv/bin/quart assets
+    #sudo -u bitcoin ./lnbits_venv/bin/quart migrate # Can't migrate since we don't have HDD in setup
 
-    mkdir -p /home/bitcoin/.mynode/
-    chown -R bitcoin:bitcoin /home/bitcoin/.mynode/
-    echo $LNBITS_UPGRADE_URL > $LNBITS_UPGRADE_URL_FILE
+    echo $LNBITS_VERSION > $LNBITS_VERSION_FILE
 fi
 
 
 # Upgrade Specter Desktop
-SPECTER_UPGRADE_VERSION=0.6.0
-SPECTER_UPGRADE_URL_FILE=/home/bitcoin/.mynode/.spectre_url
 CURRENT=""
-if [ -f $SPECTER_UPGRADE_URL_FILE ]; then
-    CURRENT=$(cat $SPECTER_UPGRADE_URL_FILE)
+if [ -f $SPECTER_VERSION_FILE ]; then
+    CURRENT=$(cat $SPECTER_VERSION_FILE)
 fi
-if [ "$CURRENT" != "$SPECTER_UPGRADE_VERSION" ]; then
+if [ "$CURRENT" != "$SPECTER_VERSION" ]; then
     cd /opt/mynode
     rm -rf specter
     mkdir -p specter
@@ -619,21 +743,20 @@ if [ "$CURRENT" != "$SPECTER_UPGRADE_VERSION" ]; then
     fi
     source env/bin/activate
     pip3 install ecdsa===0.13.3
-    pip3 install cryptoadvance.specter===$SPECTER_UPGRADE_VERSION --upgrade
+    pip3 install cryptoadvance.specter===$SPECTER_VERSION --upgrade
     deactivate
 
-    echo $SPECTER_UPGRADE_VERSION > $SPECTER_UPGRADE_URL_FILE
+    echo $SPECTER_VERSION > $SPECTER_VERSION_FILE
 fi
 
 
 # Upgrade Thunderhub
-THUNDERHUB_UPGRADE_URL=https://github.com/apotdevin/thunderhub/archive/v0.9.0.tar.gz
-THUNDERHUB_UPGRADE_URL_FILE=/home/bitcoin/.mynode/.thunderhub_url
+THUNDERHUB_UPGRADE_URL=https://github.com/apotdevin/thunderhub/archive/$THUNDERHUB_VERSION.tar.gz
 CURRENT=""
-if [ -f $THUNDERHUB_UPGRADE_URL_FILE ]; then
-    CURRENT=$(cat $THUNDERHUB_UPGRADE_URL_FILE)
+if [ -f $THUNDERHUB_VERSION_FILE ]; then
+    CURRENT=$(cat $THUNDERHUB_VERSION_FILE)
 fi
-if [ "$CURRENT" != "$THUNDERHUB_UPGRADE_URL" ]; then
+if [ "$CURRENT" != "$THUNDERHUB_VERSION" ]; then
     cd /opt/mynode
     rm -rf thunderhub
     sudo -u bitcoin wget $THUNDERHUB_UPGRADE_URL -O thunderhub.tar.gz
@@ -649,8 +772,8 @@ if [ "$CURRENT" != "$THUNDERHUB_UPGRADE_URL" ]; then
     # Setup symlink to service files
     rm -f /opt/mynode/thunderhub/.env.local
     sudo ln -s /mnt/hdd/mynode/thunderhub/.env.local /opt/mynode/thunderhub/.env.local
-    
-    echo $THUNDERHUB_UPGRADE_URL > $THUNDERHUB_UPGRADE_URL_FILE
+
+    echo $THUNDERHUB_VERSION > $THUNDERHUB_VERSION_FILE
 fi
 
 
@@ -659,13 +782,12 @@ LNDCONNECTARCH="lndconnect-linux-armv7"
 if [ $IS_X86 = 1 ]; then
     LNDCONNECTARCH="lndconnect-linux-amd64"
 fi
-LNDCONNECT_UPGRADE_URL=https://github.com/LN-Zap/lndconnect/releases/download/v0.2.0/$LNDCONNECTARCH-v0.2.0.tar.gz
-LNDCONNECT_UPGRADE_URL_FILE=/home/bitcoin/.mynode/.lndconnect_url
+LNDCONNECT_UPGRADE_URL=https://github.com/LN-Zap/lndconnect/releases/download/v0.2.0/$LNDCONNECTARCH-$LNDCONNECT_VERSION.tar.gz
 CURRENT=""
-if [ -f $LNDCONNECT_UPGRADE_URL_FILE ]; then
-    CURRENT=$(cat $LNDCONNECT_UPGRADE_URL_FILE)
+if [ -f $LNDCONNECT_VERSION_FILE ]; then
+    CURRENT=$(cat $LNDCONNECT_VERSION_FILE)
 fi
-if [ "$CURRENT" != "$LNDCONNECT_UPGRADE_URL" ]; then
+if [ "$CURRENT" != "$LNDCONNECT_VERSION" ]; then
     rm -rf /opt/download
     mkdir -p /opt/download
     cd /opt/download
@@ -673,11 +795,9 @@ if [ "$CURRENT" != "$LNDCONNECT_UPGRADE_URL" ]; then
     tar -xvf lndconnect.tar.gz
     rm lndconnect.tar.gz
     mv lndconnect-* lndconnect
-    install -m 0755 -o root -g root -t /usr/local/bin lndconnect/* 
+    install -m 0755 -o root -g root -t /usr/local/bin lndconnect/*
 
-    mkdir -p /home/bitcoin/.mynode/
-    chown -R bitcoin:bitcoin /home/bitcoin/.mynode/
-    echo $LNDCONNECT_UPGRADE_URL > $LNDCONNECT_UPGRADE_URL_FILE
+    echo $LNDCONNECT_VERSION > $LNDCONNECT_VERSION_FILE
 fi
 
 
@@ -693,6 +813,60 @@ if [ ! -f /usr/bin/ngrok  ]; then
     cp ngrok /usr/bin/
 fi
 
+
+# Upgrade CKbunker
+CKBUNKER_UPGRADE_URL=https://github.com/Coldcard/ckbunker/archive/$CKBUNKER_VERSION.tar.gz
+CURRENT=""
+if [ -f $CKBUNKER_VERSION_FILE ]; then
+    CURRENT=$(cat $CKBUNKER_VERSION_FILE)
+fi
+if [ "$CURRENT" != "$CKBUNKER_VERSION" ]; then
+    cd /opt/mynode
+    sudo -u bitcoin wget $CKBUNKER_UPGRADE_URL -O ckbunker.tar.gz
+    sudo -u bitcoin tar -xvf ckbunker.tar.gz
+    sudo -u bitcoin rm ckbunker.tar.gz
+    sudo -u bitcoin mv ckbunker-* ckbunker
+    cd ckbunker
+
+    # Make venv
+    if [ ! -d env ]; then
+        sudo -u bitcoin python3 -m venv env
+    fi
+    source env/bin/activate
+    pip3 install -r requirements.txt
+    pip3 install --editable .
+    deactivate
+
+    echo $CKBUNKER_VERSION > $CKBUNKER_VERSION_FILE
+fi
+
+
+# Upgrade Sphinx Relay
+SPHINXRELAY_UPGRADE_URL=https://github.com/stakwork/sphinx-relay/archive/$SPHINXRELAY_VERSION.tar.gz
+CURRENT=""
+if [ -f $SPHINXRELAY_VERSION_FILE ]; then
+    CURRENT=$(cat $SPHINXRELAY_VERSION_FILE)
+fi
+if [ "$CURRENT" != "$SPHINXRELAY_VERSION" ]; then
+    cd /opt/mynode
+    rm -rf sphinxrelay
+    sudo -u bitcoin wget $SPHINXRELAY_UPGRADE_URL -O sphinx-relay.tar.gz
+    sudo -u bitcoin tar -xvf sphinx-relay.tar.gz
+    sudo -u bitcoin rm sphinx-relay.tar.gz
+    sudo -u bitcoin mv sphinx-relay-* sphinxrelay
+    cd sphinxrelay
+
+    sudo -u bitcoin npm install
+
+    echo $SPHINXRELAY_VERSION > $SPHINXRELAY_VERSION_FILE
+fi
+
+
+# SKIPPING BOS - OPTIONAL APP
+# SKIPPING PYBLOCK - OPTIONAL APP
+# SKIPPING WARDEN - OPTIONAL APP
+
+
 # Make sure we are using legacy iptables
 update-alternatives --set iptables /usr/sbin/iptables-legacy || true
 update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy || true
@@ -701,11 +875,8 @@ update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy || true
 #########################################################
 
 
-# Copy myNode rootfs (downloaded earlier)
-tar -xvf /tmp/rootfs.tar.gz -C /tmp/upgrade/
-
-# Install files
-if [ $IS_X86 = 1 ]; then
+# Install files (downloaded and extracted earlier)
+if [ $IS_X86 = 1 ] || [ $IS_RASPI4_ARM64 ]; then
     rsync -r -K /tmp/upgrade/out/rootfs_*/* /
 else
     cp -rf /tmp/upgrade/out/rootfs_*/* /
@@ -724,6 +895,7 @@ fi
 # Setup myNode Startup Script
 systemctl daemon-reload
 systemctl enable check_in
+systemctl enable background
 systemctl enable docker
 systemctl enable mynode
 systemctl enable quicksync
@@ -732,9 +904,12 @@ systemctl enable firewall
 systemctl enable bandwidth
 systemctl enable www
 systemctl enable drive_check
-systemctl enable bitcoind
+systemctl enable bitcoin
+systemctl enable seed_bitcoin_peers
 systemctl enable lnd
-systemctl enable loopd
+systemctl enable loop
+systemctl enable pool
+systemctl enable lit
 systemctl enable lnd_unlock
 systemctl enable lnd_backup
 systemctl enable lnd_admin_files
@@ -743,9 +918,8 @@ systemctl enable redis-server
 #systemctl enable mongodb
 #systemctl enable electrs # DISABLED BY DEFAULT
 #systemctl enable lndhub # DISABLED BY DEFAULT
-#systemctl enable btc_rpc_explorer # DISABLED BY DEFAULT
+#systemctl enable btcrpcexplorer # DISABLED BY DEFAULT
 systemctl enable tls_proxy
-systemctl enable https
 systemctl enable rtl
 systemctl enable tor
 systemctl enable invalid_block_check
@@ -811,5 +985,3 @@ echo ""
 ### MAKE IMAGE NOW ###
 # This prevents auto gen files like certs to be part of the base image
 # Must make sure image can boot after this point and fully come up
-
-

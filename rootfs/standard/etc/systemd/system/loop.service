@@ -1,0 +1,27 @@
+# loop service
+# /etc/systemd/system/loop.service
+
+[Unit]
+Description=loop
+Wants=lnd.service
+After=lnd.service
+
+[Service]
+ExecStartPre=/usr/bin/is_not_shutting_down.sh
+ExecStartPre=/usr/bin/wait_on_lnd.sh
+EnvironmentFile=/mnt/hdd/mynode/loop/env
+ExecStart=/usr/local/bin/loopd --network=${NETWORK} --loopdir=/mnt/hdd/mynode/loop --lnd.macaroonpath=${LND_ADMIN_MACAROON_PATH}
+
+User=bitcoin
+Group=bitcoin
+Type=simple
+KillMode=control-group
+TimeoutSec=240
+Restart=always
+RestartSec=60
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=loop
+
+[Install]
+WantedBy=multi-user.target
